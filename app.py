@@ -27,7 +27,7 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 # --- SYSTEM LOGOWANIA ---
 st.sidebar.markdown("<h2 style='text-align: center; color: #3b82f6;'>SQM PRO</h2>", unsafe_allow_html=True)
 user = st.sidebar.selectbox("👤 ZALOGUJ JAKO:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
-user_pins = {"DUKIEL": "9607", "KACZMAREK": "1225"}
+user_pins = {"DUKIEL": "9607", "KACZMAREK": "1225"} # Zgodnie z pamięcią podręczną
 
 is_authenticated = False
 if user != "Wybierz...":
@@ -63,7 +63,6 @@ try:
 
     df_notes = conn.read(worksheet="ogloszenia", ttl=300).dropna(how='all')
     df_notes["Data"] = pd.to_datetime(df_notes["Data"], errors='coerce')
-    # Dodanie kolumny statusu dla Punktu 4, jeśli nie istnieje
     if "Status" not in df_notes.columns:
         df_notes["Status"] = "DO ZROBIENIA"
     df_notes["Autor"] = df_notes["Autor"].astype(str).str.upper().replace(['NAN', 'NONE', ''], 'NIEPRZYPISANE')
@@ -75,26 +74,22 @@ except Exception:
 if menu == "🛰️ CENTRUM OPERACYJNE":
     st.title("🛰️ Centrum Operacyjne Logistyki")
     
-    # Szybkie statystyki
     c1, c2, c3 = st.columns(3)
     active_df = df_all[df_all["Status"] != "WRÓCIŁO"]
     c1.metric("Aktywne Projekty", len(active_df))
     c2.metric("Twoje Transporty", len(active_df[active_df["Logistyk"] == user]))
     c3.metric("Oczekujące zadania", len(df_notes[(df_notes["Autor"] == user) & (df_notes["Status"] != "WYKONANE")]))
 
-    # ALERT SYSTEM
     st.markdown("### 🚨 Krytyczne Alerty")
     today = pd.Timestamp.now()
     alerts = active_df[(active_df["Pierwszy wyjazd"] <= today + pd.Timedelta(days=3)) & (active_df["Sloty"].isin(["NIE", "BRAK", "None"]))]
     if not alerts.empty:
         for _, row in alerts.iterrows():
-            st.error(f"⚠️ **BRAK SLOTU:** {row['Nazwa Targów']} | Start: {row['Pierwszy wyjazd'].date()} | Logistyk: {row['Logistyk']}")
+            st.error(f"⚠️ **BRAK SLOTU:** {row['Nazwa Targów']} | Wyjazd: {row['Pierwszy wyjazd'].date()}")
     else:
-        st.success("✅ Wszystkie sloty na najbliższe 72h są potwierdzone.")
+        st.success("✅ Wszystkie sloty na najbliższe 72h są pod kontrolą.")
 
     st.markdown("---")
-    
-    # Edycja Harmonogramu (Tylko Twoje)
     st.subheader(f"🛠️ Zarządzanie Transportami: {user}")
     my_tasks = active_df[active_df["Logistyk"] == user].copy()
     
@@ -125,43 +120,66 @@ if menu == "🛰️ CENTRUM OPERACYJNE":
         st.success("Baza zaktualizowana!")
         st.rerun()
 
-# --- MODUŁ 2 & 3: KALENDARZ I GANTT (Wersja stabilna) ---
+# --- MODUŁ 2: KALENDARZ ---
 elif menu == "📅 KALENDARZ WYJAZDÓW":
     st.title("📅 Grafik Operacyjny SQM")
     events = []
     for _, r in df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna())].iterrows():
-        events.append({"title": f"[{r['Logistyk']}] {r['Nazwa Targów']}", "start": r["Pierwszy wyjazd"].strftime("%Y-%m-%d"), "end": (r["Data końca"] + pd.Timedelta(days=1)).strftime("%Y-%m-%d"), "backgroundColor": "#3b82f6" if r["Logistyk"] == "DUKIEL" else "#f59e0b"})
+        events.append({
+            "title": f"[{r['Logistyk']}] {r['Nazwa Targów']}", 
+            "start": r["Pierwszy wyjazd"].strftime("%Y-%m-%d"), 
+            "end": (r["Data końca"] + pd.Timedelta(days=1)).strftime("%Y-%m-%d"), 
+            "backgroundColor": "#3b82f6" if r["Logistyk"] == "DUKIEL" else "#f59e0b"
+        })
     calendar(events=events, options={"locale": "pl", "firstDay": 1})
 
+# --- MODUŁ 3: GANTT (NAPRAWIONY BŁĄD VALUEERROR) ---
 elif menu == "📊 OŚ CZASU (GANTT)":
     st.title("📊 Obłożenie Naczep")
-    df_viz = df_all[df_all["Status"] != "WRÓCIŁO"].dropna(subset=["Pierwszy wyjazd"]).copy()
-    if not df_viz.empty:
-        fig = px.timeline(df_viz, x_start="Pierwszy wyjazd", x_end="Data koniec", y="Nazwa Targów", color="Logistyk", template="plotly_dark")
-        st.plotly_chart(fig, use_container_width=True)
+    # Filtrujemy tylko wiersze z poprawnymi datami, aby Plotly się nie wysypał
+    df_viz = df_all[
+        (df_all["Status"] != "WRÓCIŁO") & 
+        (df_all["Pierwszy wyjazd"].notna()) & 
+        (df_all["Data końca"].notna())
+    ].copy()
 
-# --- MODUŁ 4: TABLICA ZADAŃ (KANBAN / QUICK TASKS) ---
+    if not df_viz.empty:
+        # KLUCZOWA POPRAWKA: x_end="Data końca" zamiast "Data koniec"
+        fig = px.timeline(
+            df_viz, 
+            x_start="Pierwszy wyjazd", 
+            x_end="Data końca", 
+            y="Nazwa Targów", 
+            color="Logistyk", 
+            template="plotly_dark",
+            color_discrete_map={"DUKIEL": "#3b82f6", "KACZMAREK": "#f59e0b"}
+        )
+        fig.update_yaxes(autorange="reversed")
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Brak aktywnych transportów z poprawnymi datami do wyświetlenia na osi czasu.")
+
+# --- MODUŁ 4: TABLICA ZADAŃ (KANBAN) ---
 elif menu == "📋 ZADANIA I NOTATKI":
     st.title("📋 System Zadań Logistycznych")
     
-    # PODZIAŁ NA KANBAN
     col1, col2, col3 = st.columns(3)
     
     with col1:
         st.markdown("### 🔴 DO ZROBIENIA")
-        todo = df_notes[(df_notes["Status"] == "DO ZROBIENIA")].copy()
+        todo = df_notes[df_notes["Status"] == "DO ZROBIENIA"]
         for _, t in todo.iterrows():
             st.markdown(f"<div class='task-card'><b>{t['Tytul']}</b><br><small>{t['Autor']} | {t['Data'].date() if pd.notnull(t['Data']) else ''}</small></div>", unsafe_allow_html=True)
             
     with col2:
         st.markdown("### 🟡 W TRAKCIE")
-        doing = df_notes[(df_notes["Status"] == "W TRAKCIE")].copy()
+        doing = df_notes[df_notes["Status"] == "W TRAKCIE"]
         for _, t in doing.iterrows():
             st.markdown(f"<div class='task-card' style='border-left-color: #f59e0b;'><b>{t['Tytul']}</b><br><small>{t['Autor']}</small></div>", unsafe_allow_html=True)
 
     with col3:
         st.markdown("### 🟢 WYKONANE")
-        done = df_notes[(df_notes["Status"] == "WYKONANE")].copy()
+        done = df_notes[df_notes["Status"] == "WYKONANE"]
         for _, t in done.iterrows():
             st.markdown(f"<div class='task-card' style='border-left-color: #10b981; opacity: 0.6;'><b>{t['Tytul']}</b></div>", unsafe_allow_html=True)
 
