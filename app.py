@@ -7,59 +7,18 @@ from streamlit_calendar import calendar
 # --- PREMIUM CONFIGURATION ---
 st.set_page_config(page_title="SQM LOGISTICS PRO", layout="wide", initial_sidebar_state="expanded")
 
-# Zaawansowany CSS dla nowoczesnego wyglądu
+# Stylizacja CSS
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
-    
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
-        color: #e0e0e0;
-    }
-    
-    .stApp {
-        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-    }
-
-    /* Stylizacja Sidebaru */
-    [data-testid="stSidebar"] {
-        background-color: rgba(15, 23, 42, 0.8);
-        border-right: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    /* Karty i Kontenery */
-    .stMetric, .element-container {
-        background: rgba(255, 255, 255, 0.03);
-        border-radius: 12px;
-        padding: 15px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    /* Przyciski */
-    .stButton>button {
-        background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
-        color: white;
-        border: none;
-        padding: 10px 24px;
-        border-radius: 8px;
-        font-weight: 600;
-        letter-spacing: 0.5px;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
-    }
-    .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(37, 99, 235, 0.5);
-        color: white;
-    }
-
-    /* Nagłówki */
-    h1, h2, h3 {
-        background: -webkit-linear-gradient(#fff, #94a3b8);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-weight: 700 !important;
-    }
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; color: #e0e0e0; }
+    .stApp { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); }
+    [data-testid="stSidebar"] { background-color: rgba(15, 23, 42, 0.8); border-right: 1px solid rgba(255, 255, 255, 0.1); }
+    .stMetric { background: rgba(255, 255, 255, 0.05); border-radius: 12px; padding: 15px; border: 1px solid rgba(255, 255, 255, 0.1); }
+    .stButton>button { background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%); color: white; border-radius: 8px; font-weight: 600; transition: all 0.3s; }
+    .stButton>button:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4); }
+    h1, h2, h3 { color: #ffffff !important; font-weight: 700 !important; }
+    .task-card { background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #3b82f6; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -92,7 +51,7 @@ menu = st.sidebar.radio("Nawigacja:", [
     "🛰️ CENTRUM OPERACYJNE", 
     "📅 KALENDARZ WYJAZDÓW", 
     "📊 OŚ CZASU (GANTT)", 
-    "📌 NOTATKI ZESPOŁU"
+    "📋 ZADANIA I NOTATKI"
 ])
 
 # --- POBIERANIE DANYCH ---
@@ -104,126 +63,133 @@ try:
 
     df_notes = conn.read(worksheet="ogloszenia", ttl=300).dropna(how='all')
     df_notes["Data"] = pd.to_datetime(df_notes["Data"], errors='coerce')
+    # Dodanie kolumny statusu dla Punktu 4, jeśli nie istnieje
+    if "Status" not in df_notes.columns:
+        df_notes["Status"] = "DO ZROBIENIA"
     df_notes["Autor"] = df_notes["Autor"].astype(str).str.upper().replace(['NAN', 'NONE', ''], 'NIEPRZYPISANE')
 except Exception:
-    st.error("Błąd połączenia. Poczekaj 60 sekund (Limit Google).")
+    st.error("Błąd połączenia z Google Sheets.")
     st.stop()
 
 # --- MODUŁ 1: CENTRUM OPERACYJNE ---
 if menu == "🛰️ CENTRUM OPERACYJNE":
     st.title("🛰️ Centrum Operacyjne Logistyki")
     
-    # Szybkie statystyki w kartach
+    # Szybkie statystyki
     c1, c2, c3 = st.columns(3)
-    active_count = len(df_all[df_all["Status"] != "WRÓCIŁO"])
-    c1.metric("Aktywne Projekty", active_count)
-    c2.metric("Twoje Transporty", len(df_all[df_all["Logistyk"] == user]))
-    c3.metric("Status Bazy", "Połączona ✅")
+    active_df = df_all[df_all["Status"] != "WRÓCIŁO"]
+    c1.metric("Aktywne Projekty", len(active_df))
+    c2.metric("Twoje Transporty", len(active_df[active_df["Logistyk"] == user]))
+    c3.metric("Oczekujące zadania", len(df_notes[(df_notes["Autor"] == user) & (df_notes["Status"] != "WYKONANE")]))
 
-    df_active = df_all[df_all["Status"] != "WRÓCIŁO"].copy()
+    # ALERT SYSTEM
+    st.markdown("### 🚨 Krytyczne Alerty")
+    today = pd.Timestamp.now()
+    alerts = active_df[(active_df["Pierwszy wyjazd"] <= today + pd.Timedelta(days=3)) & (active_df["Sloty"].isin(["NIE", "BRAK", "None"]))]
+    if not alerts.empty:
+        for _, row in alerts.iterrows():
+            st.error(f"⚠️ **BRAK SLOTU:** {row['Nazwa Targów']} | Start: {row['Pierwszy wyjazd'].date()} | Logistyk: {row['Logistyk']}")
+    else:
+        st.success("✅ Wszystkie sloty na najbliższe 72h są potwierdzone.")
+
+    st.markdown("---")
     
-    # Filtrowanie (Glassmorphism effect)
-    with st.expander("🔍 FILTROWANIE I WYSZUKIWANIE"):
-        f1, f2 = st.columns(2)
-        search = f1.text_input("Szukaj projektu:")
-        f_log = f2.multiselect("Pokaż logistyka:", options=df_active["Logistyk"].unique())
-
-    if search: df_active = df_active[df_active["Nazwa Targów"].str.contains(search, case=False)]
-    if f_log: df_active = df_active[df_active["Logistyk"].isin(f_log)]
-
-    # Edycja tylko swoich
-    st.subheader(f"🛠️ TWOJE ZADANIA ({user})")
-    my_df = df_active[df_active["Logistyk"] == user].copy()
+    # Edycja Harmonogramu (Tylko Twoje)
+    st.subheader(f"🛠️ Zarządzanie Transportami: {user}")
+    my_tasks = active_df[active_df["Logistyk"] == user].copy()
     
     edited_my = st.data_editor(
-        my_df, 
-        use_container_width=True, hide_index=True, num_rows="dynamic",
+        my_tasks, use_container_width=True, hide_index=True, num_rows="dynamic",
         column_config={
-            "Logistyk": st.column_config.TextColumn("Właściciel", disabled=True, default=user),
+            "Logistyk": st.column_config.TextColumn(disabled=True, default=user),
             "Pierwszy wyjazd": st.column_config.DateColumn("Wyjazd"),
             "Data końca": st.column_config.DateColumn("Powrót"),
             "Status": st.column_config.SelectboxColumn("Status", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO"]),
             "Sloty": st.column_config.SelectboxColumn("Sloty", options=["TAK", "NIE", "NIE POTRZEBA"]),
+            "Zajętość auta": st.column_config.SelectboxColumn("Zajętość", options=["TAK", "NIE"]),
         }
     )
 
-    if st.button("💾 ZAPISZ ZMIANY W BAZIE"):
+    if st.button("💾 ZAPISZ HARMONOGRAM"):
         save_my = edited_my.copy()
         save_my["Logistyk"] = user
         for col in ["Pierwszy wyjazd", "Data końca"]:
             save_my[col] = pd.to_datetime(save_my[col]).dt.strftime('%Y-%m-%d').fillna('')
         
-        others = df_all[~df_all.index.isin(my_df.index)].copy()
+        others = df_all[~df_all.index.isin(my_tasks.index)].copy()
         for col in ["Pierwszy wyjazd", "Data końca"]:
             others[col] = pd.to_datetime(others[col]).dt.strftime('%Y-%m-%d').fillna('')
             
-        final = pd.concat([save_my, others], ignore_index=True)
-        conn.update(worksheet="targi", data=final)
+        conn.update(worksheet="targi", data=pd.concat([save_my, others], ignore_index=True))
         st.cache_data.clear()
-        st.success("Dane zsynchronizowane!")
+        st.success("Baza zaktualizowana!")
         st.rerun()
 
-    st.markdown("---")
-    st.subheader("👁️ TRANSPORTY PARTNERA")
-    st.dataframe(df_active[df_active["Logistyk"] != user], use_container_width=True, hide_index=True)
-
-# --- MODUŁ 2: KALENDARZ ---
+# --- MODUŁ 2 & 3: KALENDARZ I GANTT (Wersja stabilna) ---
 elif menu == "📅 KALENDARZ WYJAZDÓW":
-    st.title("📅 Grafik Operacyjny")
-    df_cal = df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna())].copy()
+    st.title("📅 Grafik Operacyjny SQM")
     events = []
-    for _, r in df_cal.iterrows():
-        color = "#3b82f6" if r["Logistyk"] == "DUKIEL" else "#f59e0b"
-        events.append({
-            "title": f"[{r['Logistyk']}] {r['Nazwa Targów']}",
-            "start": r["Pierwszy wyjazd"].strftime("%Y-%m-%d"),
-            "end": (r["Data końca"] + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
-            "backgroundColor": color,
-            "borderColor": "white"
-        })
+    for _, r in df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna())].iterrows():
+        events.append({"title": f"[{r['Logistyk']}] {r['Nazwa Targów']}", "start": r["Pierwszy wyjazd"].strftime("%Y-%m-%d"), "end": (r["Data końca"] + pd.Timedelta(days=1)).strftime("%Y-%m-%d"), "backgroundColor": "#3b82f6" if r["Logistyk"] == "DUKIEL" else "#f59e0b"})
     calendar(events=events, options={"locale": "pl", "firstDay": 1})
 
-# --- MODUŁ 3: GANTT (NAPRAWIONY) ---
 elif menu == "📊 OŚ CZASU (GANTT)":
-    st.title("📊 Obłożenie Naczep w Czasie")
+    st.title("📊 Obłożenie Naczep")
     df_viz = df_all[df_all["Status"] != "WRÓCIŁO"].dropna(subset=["Pierwszy wyjazd"]).copy()
     if not df_viz.empty:
-        # NAPRAWIONO: x_start i x_end zamiast start/end
-        fig = px.timeline(
-            df_viz, 
-            x_start="Pierwszy wyjazd", 
-            x_end="Data końca", 
-            y="Nazwa Targów", 
-            color="Logistyk",
-            template="plotly_dark",
-            color_discrete_map={"DUKIEL": "#3b82f6", "KACZMAREK": "#f59e0b"}
-        )
-        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#e0e0e0")
+        fig = px.timeline(df_viz, x_start="Pierwszy wyjazd", x_end="Data koniec", y="Nazwa Targów", color="Logistyk", template="plotly_dark")
         st.plotly_chart(fig, use_container_width=True)
 
-# --- MODUŁ 4: NOTATKI ---
-elif menu == "📌 NOTATKI ZESPOŁU":
-    st.title("📌 Zadania i Komunikaty")
+# --- MODUŁ 4: TABLICA ZADAŃ (KANBAN / QUICK TASKS) ---
+elif menu == "📋 ZADANIA I NOTATKI":
+    st.title("📋 System Zadań Logistycznych")
     
-    col1, col2 = st.columns(2)
+    # PODZIAŁ NA KANBAN
+    col1, col2, col3 = st.columns(3)
     
-    my_n = df_notes[df_notes["Autor"] == user].copy()
-    others_n = df_notes[df_notes["Autor"] != user].copy()
-
     with col1:
-        st.subheader("Moje wpisy")
-        ed = st.data_editor(my_n, use_container_width=True, hide_index=True, num_rows="dynamic",
-                            column_config={"Autor": st.column_config.TextColumn(disabled=True, default=user)})
-        if st.button("💾 Zapisz Notatki"):
-            ed["Autor"] = user
-            ed["Data"] = pd.to_datetime(ed["Data"]).dt.strftime('%Y-%m-%d').fillna('')
-            others_save = others_n.copy()
-            others_save["Data"] = pd.to_datetime(others_save["Data"]).dt.strftime('%Y-%m-%d').fillna('')
-            conn.update(worksheet="ogloszenia", data=pd.concat([ed, others_save], ignore_index=True))
-            st.cache_data.clear()
-            st.success("Zaktualizowano!")
-            st.rerun()
-
+        st.markdown("### 🔴 DO ZROBIENIA")
+        todo = df_notes[(df_notes["Status"] == "DO ZROBIENIA")].copy()
+        for _, t in todo.iterrows():
+            st.markdown(f"<div class='task-card'><b>{t['Tytul']}</b><br><small>{t['Autor']} | {t['Data'].date() if pd.notnull(t['Data']) else ''}</small></div>", unsafe_allow_html=True)
+            
     with col2:
-        st.subheader("Wpisy partnera")
-        st.dataframe(others_n, use_container_width=True, hide_index=True)
+        st.markdown("### 🟡 W TRAKCIE")
+        doing = df_notes[(df_notes["Status"] == "W TRAKCIE")].copy()
+        for _, t in doing.iterrows():
+            st.markdown(f"<div class='task-card' style='border-left-color: #f59e0b;'><b>{t['Tytul']}</b><br><small>{t['Autor']}</small></div>", unsafe_allow_html=True)
+
+    with col3:
+        st.markdown("### 🟢 WYKONANE")
+        done = df_notes[(df_notes["Status"] == "WYKONANE")].copy()
+        for _, t in done.iterrows():
+            st.markdown(f"<div class='task-card' style='border-left-color: #10b981; opacity: 0.6;'><b>{t['Tytul']}</b></div>", unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.subheader("🖋️ Edytor Twoich Zadań")
+    
+    my_notes = df_notes[df_notes["Autor"] == user].copy()
+    others_notes = df_notes[df_notes["Autor"] != user].copy()
+    
+    edited_notes = st.data_editor(
+        my_notes, use_container_width=True, hide_index=True, num_rows="dynamic",
+        column_config={
+            "Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"]),
+            "Autor": st.column_config.TextColumn(disabled=True, default=user),
+            "Data": st.column_config.DateColumn("Termin"),
+            "Tresc": st.column_config.TextColumn("Szczegóły", width="large")
+        }
+    )
+
+    if st.button("💾 SYNCHRONIZUJ TABLICĘ ZADAŃ"):
+        save_n = edited_notes.copy()
+        save_n["Autor"] = user
+        save_n["Data"] = pd.to_datetime(save_n["Data"]).dt.strftime('%Y-%m-%d').fillna('')
+        
+        others_n_save = others_notes.copy()
+        others_n_save["Data"] = pd.to_datetime(others_n_save["Data"]).dt.strftime('%Y-%m-%d').fillna('')
+        
+        conn.update(worksheet="ogloszenia", data=pd.concat([save_n, others_n_save], ignore_index=True))
+        st.cache_data.clear()
+        st.success("Tablica zaktualizowana!")
+        st.rerun()
