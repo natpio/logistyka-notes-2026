@@ -37,7 +37,6 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- 2. LOGIKA CENNIKA (DANE Z TWOJEGO PLIKU HTML) ---
-# Pełny słownik miast i stawek (przykładowe wartości bazowe na 1km/trasę z pliku)
 EXP_RATES = {
     "WŁASNY SQM BUS": {"Amsterdam":373.8,"Barcelona":1106.4,"Berlin":129.0,"Londyn":352.8,"Madryt":1382.4,"Paryż":577.8,"Mediolan":633.6,"Wiedeń":285.6},
     "WŁASNY SQM SOLO": {"Amsterdam":650.0,"Barcelona":1650.0,"Berlin":220.0,"Londyn":750.0,"Madryt":1950.0,"Paryż":950.0,"Mediolan":1100.0,"Wiedeń":550.0},
@@ -65,16 +64,13 @@ def calculate_logistics(city, start_date, end_date, weight):
         if is_uk:
             ata = 166.0
             if meta["vClass"] == "BUS":
-                ferry, bridges = 332.0, 19.0
-                uk_extra = ata + ferry + bridges
+                uk_extra = ata + 332.0 + 19.0
                 uk_details = f"Prom (€332), ATA (€166), Mosty (€19)"
             elif meta["vClass"] == "SOLO":
-                ferry, bridges, low_ems = 450.0, 19.0, 40.0
-                uk_extra = ata + ferry + bridges + low_ems
+                uk_extra = ata + 450.0 + 19.0 + 40.0
                 uk_details = f"Prom (€450), ATA (€166), Mosty (€19), Low Ems (€40)"
             else:
-                ferry, bridges, low_ems, fuel = 522.0, 19.0, 69.0, 30.0
-                uk_extra = ata + ferry + bridges + low_ems + fuel
+                uk_extra = ata + 522.0 + 19.0 + 69.0 + 30.0
                 uk_details = f"Prom (€522), ATA (€166), Mosty (€19), Low Ems (€69), Fuel (€30)"
         
         total = base_exp + base_imp + (meta["postoj"] * overlay) + uk_extra
@@ -130,18 +126,31 @@ if menu == "🏠 CENTRUM OPERACYJNE":
             """, unsafe_allow_html=True)
 
     st.markdown("---")
-    st.subheader(f"🛠️ Twój Harmonogram: {user}")
-    my_tasks = df_all[df_all["Logistyk"] == user].copy()
-    edited = st.data_editor(my_tasks, use_container_width=True, hide_index=True)
     
-    if st.button("💾 ZAPISZ HARMONOGRAM"):
+    # SEKCJA EDYCJI WŁASNEJ
+    st.subheader(f"✍️ Twoje Projekty (Edytowalne: {user})")
+    my_tasks = df_all[df_all["Logistyk"] == user].copy()
+    edited = st.data_editor(my_tasks, use_container_width=True, hide_index=True, key="my_editor")
+    
+    if st.button("💾 ZAPISZ MOJE ZMIANY"):
         others = df_all[df_all["Logistyk"] != user]
         conn.update(worksheet="targi", data=pd.concat([edited, others], ignore_index=True))
         st.cache_data.clear()
-        st.success("Zapisano zmiany.")
+        st.success("Twoje dane zostały zapisane.")
         st.rerun()
 
-# --- MODUŁ 2: KALENDARZ ---
+    st.markdown("---")
+    
+    # SEKCJA PODGLĄDU PARTNERA
+    partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
+    st.subheader(f"👁️ Projekty Partnera (Podgląd: {partner})")
+    partner_tasks = df_all[df_all["Logistyk"] == partner].copy()
+    if not partner_tasks.empty:
+        st.dataframe(partner_tasks, use_container_width=True, hide_index=True)
+    else:
+        st.info(f"Brak aktywnych projektów dla użytkownika {partner}.")
+
+# --- POZOSTAŁE MODUŁY (BEZ ZMIAN) ---
 elif menu == "📅 KALENDARZ":
     st.title("📅 Grafik Wyjazdów")
     events = []
@@ -154,55 +163,42 @@ elif menu == "📅 KALENDARZ":
         })
     calendar(events=events, options={"locale": "pl", "firstDay": 1})
 
-# --- MODUŁ 3: GANTT ---
 elif menu == "📊 GANTT":
     st.title("📊 Obłożenie Naczep")
     df_v = df_all[df_all["Pierwszy wyjazd"].notna() & df_all["Data końca"].notna()].copy()
     if not df_v.empty:
-        # NAPRAWIONA KOLUMNA "Data końca"
         fig = px.timeline(df_v, x_start="Pierwszy wyjazd", x_end="Data końca", y="Nazwa Targów", 
                           color="Logistyk", color_discrete_map={"DUKIEL": "#004a99", "KACZMAREK": "#e67e22"},
                           template="plotly_white")
         fig.update_yaxes(autorange="reversed")
         st.plotly_chart(fig, use_container_width=True)
 
-# --- MODUŁ 4: TABLICA ZADAŃ (KANBAN + ARCHIWUM) ---
 elif menu == "📋 TABLICA ZADAŃ":
-    st.title("📋 Zadania i Archiwum (90 dni)")
-    
+    st.title("📋 Zadania i Archiwum")
     limit = datetime.now() - timedelta(days=90)
     c1, c2, c3 = st.columns(3)
-    
     statuses = [("🔴 DO ZROBIENIA", "DO ZROBIENIA"), ("🟡 W TRAKCIE", "W TRAKCIE"), ("🟢 WYKONANE", "WYKONANE")]
     for i, (label, status) in enumerate(statuses):
         with [c1, c2, c3][i]:
             st.markdown(f"**{label}**")
-            # Zadania wykonane pokazujemy tylko z 7 dni, reszta w archiwum poniżej
-            f_tasks = df_notes[(df_notes["Status"] == status)]
+            f_tasks = df_notes[df_notes["Status"] == status]
             if status == "WYKONANE":
                 f_tasks = f_tasks[f_tasks["Data"] >= (datetime.now() - timedelta(days=7))]
-            
             for _, t in f_tasks.iterrows():
                 st.markdown(f"<div class='task-card'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>{t['Autor']}</small></div>", unsafe_allow_html=True)
 
     st.markdown("---")
-    st.subheader("🖋️ Edytuj swoje zadania")
+    st.subheader("🖋️ Zarządzaj swoimi zadaniami")
     my_notes = df_notes[df_notes["Autor"] == user].copy()
-    edited_n = st.data_editor(my_notes, use_container_width=True, hide_index=True, num_rows="dynamic",
-                              column_config={"Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"])})
+    edited_n = st.data_editor(my_notes, use_container_width=True, hide_index=True, num_rows="dynamic", key="note_editor")
     
-    if st.button("💾 SYNCHRONIZUJ TABLICĘ"):
+    if st.button("💾 SYNCHRONIZUJ ZADANIA"):
         edited_n.loc[edited_n["Status"] == "WYKONANE", "Data"] = edited_n["Data"].fillna(datetime.now())
         others_n = df_notes[df_notes["Autor"] != user]
         combined_n = pd.concat([edited_n, others_n], ignore_index=True)
-        # Automatyczne usuwanie starszych niż 90 dni
         final_n = combined_n[~((combined_n["Status"] == "WYKONANE") & (combined_n["Data"] < limit))].copy()
         final_n["Data"] = final_n["Data"].dt.strftime('%Y-%m-%d').fillna('')
-        
         conn.update(worksheet="ogloszenia", data=final_n)
         st.cache_data.clear()
-        st.success("Tablica zaktualizowana i zarchiwizowana.")
+        st.success("Zaktualizowano zadania.")
         st.rerun()
-
-    with st.expander("📁 Pełne Archiwum (Ostatnie 90 dni)"):
-        st.dataframe(df_notes[(df_notes["Status"] == "WYKONANE") & (df_notes["Data"] >= limit)], use_container_width=True)
