@@ -40,6 +40,8 @@ try:
     # Konwersja dat
     df_all["Pierwszy wyjazd"] = pd.to_datetime(df_all["Pierwszy wyjazd"], errors='coerce')
     df_all["Data końca"] = pd.to_datetime(df_all["Data końca"], errors='coerce')
+    
+    # Jeśli brak daty końca, użyj początku
     df_all["Data końca"] = df_all["Data końca"].fillna(df_all["Pierwszy wyjazd"])
 
     # Konwersja tekstowa
@@ -47,102 +49,76 @@ try:
     for col in text_cols:
         if col in df_all.columns:
             df_all[col] = df_all[col].astype(str).replace(['nan', 'None', ''], 'BRAK')
-except:
-    df_all = pd.DataFrame(columns=["Nazwa Targów", "Pierwszy wyjazd", "Data końca", "Status", "Logistyk", "Zajętość auta", "Sloty", "Auta", "Grupa WhatsApp", "Parkingi"])
+except Exception as e:
+    st.error(f"Błąd bazy danych: {e}")
+    df_all = pd.DataFrame()
 
 # --- MODUŁ 1: HARMONOGRAM BIEŻĄCY ---
 if menu == "HARMONOGRAM BIEŻĄCY":
     st.header("📅 Harmonogram Operacyjny i Edycja")
     
-    # Separacja aktywnych projektów
     df_active = df_all[df_all["Status"] != "WRÓCIŁO"].copy()
 
-    # --- NOWA SEKCJA: WYSZUKIWARKA I FILTRY ---
-    st.markdown("### 🔍 Filtrowanie danych")
-    col_search, col_filt1, col_filt2 = st.columns([2, 1, 1])
-    
-    with col_search:
-        search_query = st.text_input("Szukaj projektu (wpisz nazwę):", placeholder="np. Barcelona...")
-    
-    with col_filt1:
-        logistyk_filter = st.multiselect("Filtruj wg Logistyka:", 
-                                         options=sorted(df_active["Logistyk"].unique()),
-                                         default=[])
-    
-    with col_filt2:
-        status_filter = st.multiselect("Filtruj wg Statusu:", 
-                                       options=sorted(df_active["Status"].unique()),
-                                       default=[])
+    # --- WYSZUKIWARKA I FILTRY ---
+    st.markdown("### 🔍 Filtrowanie")
+    col_s, col_l, col_st = st.columns([2, 1, 1])
+    with col_s:
+        search = st.text_input("Szukaj projektu:", placeholder="Wpisz nazwę...")
+    with col_l:
+        f_log = st.multiselect("Logistyk:", options=sorted(df_active["Logistyk"].unique()))
+    with col_st:
+        f_stat = st.multiselect("Status:", options=sorted(df_active["Status"].unique()))
 
-    # Aplikowanie filtrów na DataFrame
-    if search_query:
-        df_active = df_active[df_active["Nazwa Targów"].str.contains(search_query, case=False, na=False)]
-    
-    if logistyk_filter:
-        df_active = df_active[df_active["Logistyk"].isin(logistyk_filter)]
-        
-    if status_filter:
-        df_active = df_active[df_active["Status"].isin(status_filter)]
+    # Aplikacja filtrów
+    if search:
+        df_active = df_active[df_active["Nazwa Targów"].str.contains(search, case=False, na=False)]
+    if f_log:
+        df_active = df_active[df_active["Logistyk"].isin(f_log)]
+    if f_stat:
+        df_active = df_active[df_active["Status"].isin(f_stat)]
 
-    st.markdown("---")
-    st.subheader("📝 Lista operacyjna")
-    
-    # Kolorowanie wierszy przypisanych do zalogowanego użytkownika
     def style_df(row):
         if row['Logistyk'] == user: return ['background-color: #e3f2fd; color: black'] * len(row)
         return [''] * len(row)
 
-    # Edytor z dynamicznymi wierszami
     edited_df = st.data_editor(
         df_active.style.apply(style_df, axis=1),
         use_container_width=True,
         hide_index=True,
         num_rows="dynamic",
         column_config={
-            "Nazwa Targów": st.column_config.TextColumn("Nazwa Targów", required=True),
-            "Pierwszy wyjazd": st.column_config.DateColumn("Początek", format="YYYY-MM-DD"),
-            "Data końca": st.column_config.DateColumn("Koniec", format="YYYY-MM-DD"),
-            "Status": st.column_config.SelectboxColumn("Status", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO"], default="OCZEKUJE"),
-            "Logistyk": st.column_config.SelectboxColumn("Logistyk", options=["DUKIEL", "KACZMAREK", "TRANSPORT KLIENTA", "DO PRZYPISANIA", "OBAJ"], default="DO PRZYPISANIA"),
-            "Zajętość auta": st.column_config.SelectboxColumn("Zajętość", options=["TAK", "NIE"], default="TAK"),
-            "Sloty": st.column_config.SelectboxColumn("Sloty", options=["TAK", "NIE", "NIE POTRZEBA"], default="NIE"),
-            "Auta": st.column_config.SelectboxColumn("Auta", options=["TAK", "NIE", "TRANSPORT KLIENTA"], default="TAK"),
-            "Grupa WhatsApp": st.column_config.SelectboxColumn("WhatsApp", options=["TAK", "NIE", "NIE DOTYCZY"], default="NIE"),
-            "Parkingi": st.column_config.SelectboxColumn("Parkingi", options=["TAK", "NIE", "TRANSPORT KLIENTA"], default="NIE")
+            "Pierwszy wyjazd": st.column_config.DateColumn("Początek"),
+            "Data końca": st.column_config.DateColumn("Koniec"),
+            "Status": st.column_config.SelectboxColumn(options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO"]),
+            "Logistyk": st.column_config.SelectboxColumn(options=["DUKIEL", "KACZMAREK", "TRANSPORT KLIENTA", "DO PRZYPISANIA", "OBAJ"])
         }
     )
 
-    if st.button("💾 ZAPISZ WSZYSTKIE ZMIANY I FILTROWANE DANY"):
-        save_df = edited_df.copy()
+    if st.button("💾 ZAPISZ ZMIANY"):
+        # Przygotowanie do zapisu (tylko wiersze z edytora)
+        edited_copy = edited_df.copy()
         for col in ["Pierwszy wyjazd", "Data końca"]:
-            save_df[col] = save_df[col].dt.strftime('%Y-%m-%d').fillna('')
+            edited_copy[col] = edited_copy[col].dt.strftime('%Y-%m-%d').fillna('')
         
-        # Łączymy: to co zostało w edytorze + to co odfiltrowaliśmy + archiwum
-        # Aby nie stracić danych, których nie widzimy przez filtry:
-        current_active_ids = df_active.index
-        original_active = df_all[df_all["Status"] != "WRÓCIŁO"].copy()
+        # Pobranie niepokazanych (odfiltrowanych) aktywnych i archiwum
+        not_in_editor = df_all[~df_all.index.isin(df_active.index)]
         
-        # Zamiana edytowanych wierszy w oryginalnym zbiorze
-        original_active.update(save_df)
-        
-        # Jeśli dodano nowe wiersze w edytorze (których nie ma w original_active)
-        new_rows = save_df[~save_df.index.isin(original_active.index)]
-        final_active = pd.concat([original_active, new_rows])
-        
-        df_arch = df_all[df_all["Status"] == "WRÓCIŁO"]
+        # Konwersja dat dla reszty danych
         for col in ["Pierwszy wyjazd", "Data końca"]:
-            if not df_arch.empty:
-                df_arch[col] = df_arch[col].dt.strftime('%Y-%m-%d').fillna('')
-        
-        final_to_save = pd.concat([final_active, df_arch], ignore_index=True)
+            not_in_editor[col] = not_in_editor[col].dt.strftime('%Y-%m-%d').fillna('')
+            
+        final_to_save = pd.concat([edited_copy, not_in_editor], ignore_index=True).drop_duplicates(subset=["Nazwa Targów", "Pierwszy wyjazd"], keep='first')
         conn.update(worksheet="targi", data=final_to_save)
-        st.success("Zapisano! Filtry zostały uwzględnione, a dane zabezpieczone.")
+        st.success("Zapisano!")
         st.rerun()
 
-# --- MODUŁY WIDOKÓW (Kalendarz, Gantt, Archiwum, Notatki) pozostają bez zmian ---
+# --- MODUŁ 2: WIDOK KALENDARZA (POPRAWKA BŁĘDU) ---
 elif menu == "WIDOK KALENDARZA (SIATKA)":
     st.header("📅 Miesięczny Grafik SQM")
-    df_cal = df_all[df_all["Status"] != "WRÓCIŁO"].copy()
+    
+    # Kluczowa poprawka: usuwamy wiersze bez daty początku przed pętlą strftime
+    df_cal = df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna())].copy()
+    
     if not df_cal.empty:
         events = []
         for _, r in df_cal.iterrows():
@@ -154,7 +130,10 @@ elif menu == "WIDOK KALENDARZA (SIATKA)":
                 "backgroundColor": c, "borderColor": c
             })
         calendar(events=events, options={"initialView": "dayGridMonth", "locale": "pl", "firstDay": 1})
+    else:
+        st.warning("Uzupełnij 'Pierwszy wyjazd' w harmonogramie, aby zobaczyć wydarzenia.")
 
+# --- MODUŁ 3: WYKRES GANTA ---
 elif menu == "WYKRES GANTA (OŚ CZASU)":
     st.header("📊 Oś czasu transportów")
     df_viz = df_all[df_all["Status"] != "WRÓCIŁO"].dropna(subset=["Pierwszy wyjazd"]).copy()
@@ -164,6 +143,7 @@ elif menu == "WYKRES GANTA (OŚ CZASU)":
         fig.update_yaxes(autorange="reversed")
         st.plotly_chart(fig, use_container_width=True)
 
+# --- ARCHIWUM I NOTATKI ---
 elif menu == "ARCHIWUM (WRÓCIŁO)":
     st.header("📁 Archiwum")
     st.dataframe(df_all[df_all["Status"] == "WRÓCIŁO"], use_container_width=True, hide_index=True)
@@ -174,4 +154,5 @@ elif menu == "NOTATKI":
     ed_notes = st.data_editor(df_notes, use_container_width=True, num_rows="dynamic", hide_index=True)
     if st.button("💾 ZAPISZ NOTATKI"):
         conn.update(worksheet="ogloszenia", data=ed_notes)
+        st.success("Zaktualizowano notatki!")
         st.rerun()
