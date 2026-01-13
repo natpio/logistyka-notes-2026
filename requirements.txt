@@ -1,5 +1,5 @@
 streamlit
+st-gsheets-connection
 pandas
 plotly
-st-gsheets-connection
-pip install streamlit-calendar
+streamlit-calendar
