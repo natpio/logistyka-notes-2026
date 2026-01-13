@@ -12,7 +12,6 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap');
     .stApp { background-color: #f8f9fa; font-family: 'Segoe UI', sans-serif; }
-    [data-testid="stSidebar"] { background-color: #ffffff; border-right: 1px solid #dee2e6; }
     div[data-testid="stMetric"], .element-container {
         background-color: #ffffff; border-radius: 10px; padding: 15px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #e9ecef;
@@ -58,22 +57,21 @@ def calculate_logistics(city, start_date, end_date, weight):
     for name, meta in RATES_META.items():
         if weight > meta["cap"]: continue
         base_exp = EXP_RATES[name].get(city, 0)
-        base_imp = base_exp
         uk_extra = 0
         uk_details = ""
         if is_uk:
             ata = 166.0
             if meta["vClass"] == "BUS":
                 uk_extra = ata + 332.0 + 19.0
-                uk_details = f"Prom (€332), ATA (€166), Mosty (€19)"
+                uk_details = "Prom (€332), ATA (€166), Mosty (€19)"
             elif meta["vClass"] == "SOLO":
                 uk_extra = ata + 450.0 + 19.0 + 40.0
-                uk_details = f"Prom (€450), ATA (€166), Mosty (€19), Low Ems (€40)"
+                uk_details = "Prom (€450), ATA (€166), Mosty (€19), Low Ems (€40)"
             else:
                 uk_extra = ata + 522.0 + 19.0 + 69.0 + 30.0
-                uk_details = f"Prom (€522), ATA (€166), Mosty (€19), Low Ems (€69), Fuel (€30)"
+                uk_details = "Prom (€522), ATA (€166), Mosty (€19), Low Ems (€69), Fuel (€30)"
         
-        total = base_exp + base_imp + (meta["postoj"] * overlay) + uk_extra
+        total = (base_exp * 2) + (meta["postoj"] * overlay) + uk_extra
         results.append({"name": name, "cost": total, "vClass": meta["vClass"], "uk_info": uk_details})
     return sorted(results, key=lambda x: x["cost"])[0] if results else None
 
@@ -94,111 +92,99 @@ try:
     df_all["Data końca"] = pd.to_datetime(df_all["Data końca"], errors='coerce')
     df_notes = conn.read(worksheet="ogloszenia", ttl=300).dropna(how='all')
     df_notes["Data"] = pd.to_datetime(df_notes["Data"], errors='coerce')
-    df_notes["Autor"] = df_notes["Autor"].astype(str).str.upper()
 except:
-    st.error("Błąd połączenia z bazą danych.")
+    st.error("Błąd bazy danych.")
     st.stop()
 
-# --- 5. MENU ---
+# --- 5. NAWIGACJA ---
 menu = st.sidebar.radio("Nawigacja:", ["🏠 CENTRUM OPERACYJNE", "📅 KALENDARZ", "📊 GANTT", "📋 TABLICA ZADAŃ"])
 
 # --- MODUŁ 1: CENTRUM OPERACYJNE ---
 if menu == "🏠 CENTRUM OPERACYJNE":
     st.title("🛰️ Centrum Operacyjne SQM")
     
-    # KALKULATOR KOSZTÓW
+    # KALKULATOR
     st.subheader("🧮 Kalkulator Cennikowy 2026")
     with st.container():
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
         t_city = c1.selectbox("Kierunek:", sorted(list(EXP_RATES["WŁASNY SQM BUS"].keys())))
-        t_weight = c2.number_input("Waga (kg):", min_value=0, value=500, step=100)
+        t_weight = c2.number_input("Waga (kg):", min_value=0, value=500)
         t_start = c3.date_input("Wyjazd:", datetime.now())
         t_end = c4.date_input("Powrót:", datetime.now() + timedelta(days=4))
         
         calc = calculate_logistics(t_city, pd.to_datetime(t_start), pd.to_datetime(t_end), t_weight)
         if calc:
-            st.markdown(f"""
-            <div class="recommendation-box">
-                <b>Rekomendacja:</b> {calc['name']} ({calc['vClass']})<br>
-                <b>Koszt szacowany:</b> <span style="font-size: 1.3rem;">€ {calc['cost']:.2f} netto</span>
-                {f'<div class="uk-alert"><b>Doliczono koszty UK:</b><br>{calc["uk_info"]}</div>' if calc["uk_info"] else ""}
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f'<div class="recommendation-box"><b>Rekomendacja:</b> {calc["name"]}<br><b>Koszt:</b> €{calc["cost"]:.2f} netto{f"<div class='uk-alert'>{calc['uk_info']}</div>" if calc["uk_info"] else ""}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     
-    # SEKCJA EDYCJI WŁASNEJ
-    st.subheader(f"✍️ Twoje Projekty (Edytowalne: {user})")
+    # EDYTOR TWOICH PROJEKTÓW (Z LISTAMI WYBORU)
+    st.subheader(f"✍️ Twoje Projekty (Edycja: {user})")
     my_tasks = df_all[df_all["Logistyk"] == user].copy()
-    edited = st.data_editor(my_tasks, use_container_width=True, hide_index=True, key="my_editor")
+    
+    config = {
+        "Status": st.column_config.SelectboxColumn("Status", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"], required=True),
+        "Logistyk": st.column_config.SelectboxColumn("Logistyk", options=["DUKIEL", "KACZMAREK"], required=True),
+        "Sloty": st.column_config.SelectboxColumn("Sloty", options=["TAK", "NIE", "NIE POTRZEBA"]),
+        "Pierwszy wyjazd": st.column_config.DateColumn("Pierwszy wyjazd"),
+        "Data końca": st.column_config.DateColumn("Data końca")
+    }
+    
+    edited = st.data_editor(my_tasks, use_container_width=True, hide_index=True, column_config=config, key="oper_editor")
     
     if st.button("💾 ZAPISZ MOJE ZMIANY"):
         others = df_all[df_all["Logistyk"] != user]
         conn.update(worksheet="targi", data=pd.concat([edited, others], ignore_index=True))
         st.cache_data.clear()
-        st.success("Twoje dane zostały zapisane.")
+        st.success("Dane zapisane.")
         st.rerun()
 
     st.markdown("---")
-    
-    # SEKCJA PODGLĄDU PARTNERA
+    st.subheader(f"👁️ Projekty Partnera (Podgląd)")
     partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
-    st.subheader(f"👁️ Projekty Partnera (Podgląd: {partner})")
-    partner_tasks = df_all[df_all["Logistyk"] == partner].copy()
-    if not partner_tasks.empty:
-        st.dataframe(partner_tasks, use_container_width=True, hide_index=True)
-    else:
-        st.info(f"Brak aktywnych projektów dla użytkownika {partner}.")
+    st.dataframe(df_all[df_all["Logistyk"] == partner], use_container_width=True, hide_index=True)
 
-# --- POZOSTAŁE MODUŁY (BEZ ZMIAN) ---
+# --- POZOSTAŁE MODUŁY ---
 elif menu == "📅 KALENDARZ":
-    st.title("📅 Grafik Wyjazdów")
-    events = []
-    for _, r in df_all[df_all["Pierwszy wyjazd"].notna()].iterrows():
-        events.append({
-            "title": f"[{r['Logistyk']}] {r['Nazwa Targów']}",
-            "start": r["Pierwszy wyjazd"].strftime("%Y-%m-%d"),
-            "end": (r["Data końca"] + timedelta(days=1)).strftime("%Y-%m-%d"),
-            "backgroundColor": "#004a99" if r["Logistyk"] == "DUKIEL" else "#e67e22"
-        })
+    events = [{"title": f"[{r['Logistyk']}] {r['Nazwa Targów']}", "start": r["Pierwszy wyjazd"].strftime("%Y-%m-%d"), "end": (r["Data końca"] + timedelta(days=1)).strftime("%Y-%m-%d"), "backgroundColor": "#004a99" if r["Logistyk"] == "DUKIEL" else "#e67e22"} for _, r in df_all[df_all["Pierwszy wyjazd"].notna()].iterrows()]
     calendar(events=events, options={"locale": "pl", "firstDay": 1})
 
 elif menu == "📊 GANTT":
-    st.title("📊 Obłożenie Naczep")
     df_v = df_all[df_all["Pierwszy wyjazd"].notna() & df_all["Data końca"].notna()].copy()
-    if not df_v.empty:
-        fig = px.timeline(df_v, x_start="Pierwszy wyjazd", x_end="Data końca", y="Nazwa Targów", 
-                          color="Logistyk", color_discrete_map={"DUKIEL": "#004a99", "KACZMAREK": "#e67e22"},
-                          template="plotly_white")
-        fig.update_yaxes(autorange="reversed")
-        st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(px.timeline(df_v, x_start="Pierwszy wyjazd", x_end="Data końca", y="Nazwa Targów", color="Logistyk", color_discrete_map={"DUKIEL": "#004a99", "KACZMAREK": "#e67e22"}, template="plotly_white"), use_container_width=True)
 
 elif menu == "📋 TABLICA ZADAŃ":
-    st.title("📋 Zadania i Archiwum")
+    st.title("📋 Zadania")
     limit = datetime.now() - timedelta(days=90)
-    c1, c2, c3 = st.columns(3)
-    statuses = [("🔴 DO ZROBIENIA", "DO ZROBIENIA"), ("🟡 W TRAKCIE", "W TRAKCIE"), ("🟢 WYKONANE", "WYKONANE")]
-    for i, (label, status) in enumerate(statuses):
-        with [c1, c2, c3][i]:
-            st.markdown(f"**{label}**")
-            f_tasks = df_notes[df_notes["Status"] == status]
-            if status == "WYKONANE":
-                f_tasks = f_tasks[f_tasks["Data"] >= (datetime.now() - timedelta(days=7))]
-            for _, t in f_tasks.iterrows():
-                st.markdown(f"<div class='task-card'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>{t['Autor']}</small></div>", unsafe_allow_html=True)
-
+    
+    # Kanban (uproszczony widok)
+    cols = st.columns(3)
+    for i, (l, s) in enumerate([("🔴 DO ZROBIENIA", "DO ZROBIENIA"), ("🟡 W TRAKCIE", "W TRAKCIE"), ("🟢 WYKONANE", "WYKONANE")]):
+        with cols[i]:
+            st.markdown(f"**{l}**")
+            tasks = df_notes[df_notes["Status"] == s]
+            if s == "WYKONANE": tasks = tasks[tasks["Data"] >= (datetime.now() - timedelta(days=7))]
+            for _, t in tasks.iterrows():
+                st.markdown(f"<div class='task-card'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>{t.get('Autor', '')}</small></div>", unsafe_allow_html=True)
+    
     st.markdown("---")
-    st.subheader("🖋️ Zarządzaj swoimi zadaniami")
-    my_notes = df_notes[df_notes["Autor"] == user].copy()
-    edited_n = st.data_editor(my_notes, use_container_width=True, hide_index=True, num_rows="dynamic", key="note_editor")
+    my_notes = df_notes[df_notes["Autor"].str.upper() == user].copy()
+    
+    # LISTY WYBORU DLA ZADAŃ
+    note_config = {
+        "Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"], required=True),
+        "Data": st.column_config.DateColumn("Data")
+    }
+    
+    edited_n = st.data_editor(my_notes, use_container_width=True, hide_index=True, num_rows="dynamic", column_config=note_config, key="note_editor")
     
     if st.button("💾 SYNCHRONIZUJ ZADANIA"):
         edited_n.loc[edited_n["Status"] == "WYKONANE", "Data"] = edited_n["Data"].fillna(datetime.now())
-        others_n = df_notes[df_notes["Autor"] != user]
-        combined_n = pd.concat([edited_n, others_n], ignore_index=True)
-        final_n = combined_n[~((combined_n["Status"] == "WYKONANE") & (combined_n["Data"] < limit))].copy()
-        final_n["Data"] = final_n["Data"].dt.strftime('%Y-%m-%d').fillna('')
-        conn.update(worksheet="ogloszenia", data=final_n)
+        others_n = df_notes[df_notes["Autor"].str.upper() != user]
+        combined = pd.concat([edited_n, others_n], ignore_index=True)
+        # Filtrowanie archiwum 3 miesiące
+        final = combined[~((combined["Status"] == "WYKONANE") & (combined["Data"] < limit))].copy()
+        final["Data"] = final["Data"].dt.strftime('%Y-%m-%d').fillna('')
+        conn.update(worksheet="ogloszenia", data=final)
         st.cache_data.clear()
-        st.success("Zaktualizowano zadania.")
         st.rerun()
