@@ -11,10 +11,7 @@ st.sidebar.title("🔐 PANEL LOGOWANIA SQM")
 user = st.sidebar.selectbox("Użytkownik:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
 
 # PIN-y użytkowników
-user_pins = {
-    "DUKIEL": "9607", 
-    "KACZMAREK": "1225"
-}
+user_pins = {"DUKIEL": "9607", "KACZMAREK": "1225"}
 
 is_authenticated = False
 if user != "Wybierz...":
@@ -38,13 +35,23 @@ if menu == "HARMONOGRAM BIEŻĄCY":
     st.header("📅 Bieżący Harmonogram Wyjazdów")
     
     try:
-        # Pobieranie wszystkich danych z arkusza 'targi'
         df_all = conn.read(worksheet="targi", ttl=0).dropna(subset=["Nazwa Targów"])
     except:
         df_all = pd.DataFrame(columns=["Nazwa Targów", "Pierwszy wyjazd", "Zajętość auta", "Sloty", "Auta", "Grupa WhatsApp", "Parkingi", "Status", "Logistyk"])
 
-    # Filtracja: Tylko projekty, które jeszcze nie wróciły
-    df_active = df_all[df_all["Status"] != "WRÓCIŁO"]
+    df_active = df_all[df_all["Status"] != "WRÓCIŁO"].copy()
+
+    # --- FILTROWANIE I WYSZUKIWANIE (Targi) ---
+    st.subheader("🔍 Szukaj i Filtruj")
+    c_search, c_filter = st.columns([2, 1])
+    search_query = c_search.text_input("Szukaj w nazwie targów lub logistyku:", "").lower()
+    log_filter = c_filter.multiselect("Filtruj wg Logistyka:", df_active["Logistyk"].unique())
+
+    if search_query:
+        df_active = df_active[df_active["Nazwa Targów"].str.lower().str.contains(search_query) | 
+                              df_active["Logistyk"].str.lower().str.contains(search_query)]
+    if log_filter:
+        df_active = df_active[df_active["Logistyk"].isin(log_filter)]
 
     # --- FORMULARZ DODAWANIA ---
     with st.expander("➕ DODAJ NOWE TARGI"):
@@ -68,78 +75,73 @@ if menu == "HARMONOGRAM BIEŻĄCY":
             
             if st.form_submit_button("Zapisz w harmonogramie"):
                 new_row = pd.DataFrame([{
-                    "Nazwa Targów": f_nazwa.upper(),
-                    "Pierwszy wyjazd": f_data.strftime("%Y-%m-%d"),
+                    "Nazwa Targów": f_nazwa.upper(), "Pierwszy wyjazd": f_data.strftime("%Y-%m-%d"),
                     "Zajętość auta": f_zaj, "Sloty": f_slo, "Auta": f_aut,
-                    "Grupa WhatsApp": f_wha, "Parkingi": f_par,
-                    "Status": f_stat, "Logistyk": f_log
+                    "Grupa WhatsApp": f_wha, "Parkingi": f_par, "Status": f_stat, "Logistyk": f_log
                 }])
                 conn.update(worksheet="targi", data=pd.concat([df_all, new_row], ignore_index=True))
-                st.success("Dodano pomyślnie!")
                 st.rerun()
 
-    # --- WYŚWIETLANIE TABELI ---
+    # --- WYŚWIETLANIE TABELI Z KOLOROWANIEM WŁAŚCICIELA ---
     if not df_active.empty:
         st.subheader("Lista operacyjna")
-        def style_rows(row):
-            if row['Status'] == 'W TRAKCIE': return ['background-color: #FFA500; color: black'] * len(row)
-            if row['Status'] == 'OCZEKUJE': return ['background-color: #90EE90; color: black'] * len(row)
+        
+        def color_owner(row):
+            # Twoje projekty (DUKIEL/KACZMAREK) wyróżnione na niebiesko
+            if row['Logistyk'] == user:
+                return ['background-color: #e3f2fd; color: black'] * len(row)
+            # Projekty drugiego logistyka na szaro/biało
+            elif row['Logistyk'] in ["DUKIEL", "KACZMAREK"]:
+                return ['background-color: #f5f5f5; color: #555'] * len(row)
+            # Tematy do przypisania na żółto
+            elif row['Logistyk'] == "DO PRZYPISANIA":
+                return ['background-color: #fffde7; color: black'] * len(row)
             return [''] * len(row)
         
-        st.dataframe(df_active.style.apply(style_rows, axis=1), use_container_width=True, hide_index=True)
+        # Sortowanie w tabeli st.dataframe jest automatyczne (kliknij nagłówek)
+        st.dataframe(df_active.style.apply(color_owner, axis=1), use_container_width=True, hide_index=True)
         
-        # --- PANEL ZARZĄDZANIA (EDYCJA I USUNIĘCIE) ---
+        # --- PANEL ZARZĄDZANIA ---
         st.markdown("---")
         col_ed1, col_ed2 = st.columns(2)
-        
         with col_ed1:
             st.subheader("🔄 Zmień status")
-            # Zmiana statusu dostępna dla wszystkich (współpraca)
             event_to_update = st.selectbox("Wybierz projekt:", df_active["Nazwa Targów"].tolist(), key="upd")
             new_stat = st.selectbox("Nowy status:", ["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO"])
             if st.button("Aktualizuj status"):
                 df_all.loc[df_all["Nazwa Targów"] == event_to_update, "Status"] = new_stat
                 conn.update(worksheet="targi", data=df_all)
-                st.success(f"Zmieniono status {event_to_update}")
                 st.rerun()
-
         with col_ed2:
             st.subheader("🗑️ Usuń wpis")
-            # BLOKADA: Tylko Twoje projekty, wspólne lub do przypisania
-            my_deletable = df_active[
-                (df_active["Logistyk"] == user) | 
-                (df_active["Logistyk"] == "DO PRZYPISANIA") | 
-                (df_active["Logistyk"] == "OBAJ")
-            ]["Nazwa Targów"].tolist()
-            
+            my_deletable = df_active[(df_active["Logistyk"] == user) | (df_active["Logistyk"] == "DO PRZYPISANIA")]["Nazwa Targów"].tolist()
             if my_deletable:
                 event_to_delete = st.selectbox("Wybierz do usunięcia:", my_deletable, key="del")
-                confirm_del = st.checkbox("Potwierdzam usunięcie")
-                if st.button("Usuń wybrane targi") and confirm_del:
+                if st.button("Usuń wybrane targi") and st.checkbox("Potwierdzam"):
                     df_all = df_all[df_all["Nazwa Targów"] != event_to_delete]
                     conn.update(worksheet="targi", data=df_all)
-                    st.warning(f"Usunięto: {event_to_delete}")
                     st.rerun()
-            else:
-                st.info("Nie masz przypisanych projektów do usunięcia.")
-    else:
-        st.info("Brak aktywnych wyjazdów.")
 
-# --- MODUŁ 2: ARCHIWUM ---
-elif menu == "ARCHIWUM (WRÓCIŁO)":
-    st.header("📁 Archiwum Transportów (Status: WRÓCIŁO)")
-    try:
-        df_all = conn.read(worksheet="targi", ttl=0)
-        df_arch = df_all[df_all["Status"] == "WRÓCIŁO"]
-        st.dataframe(df_arch, use_container_width=True, hide_index=True)
-    except:
-        st.error("Błąd ładowania danych.")
-
-# --- MODUŁ 3: NOTATKI ---
+# --- MODUŁ 2: NOTATKI ---
 elif menu == "NOTATKI":
-    st.header("📌 Notatki")
-    df_notes = conn.read(worksheet="ogloszenia", ttl=0).dropna(subset=["Tytul"])
-    
+    st.header("📌 Notatki Logistyczne")
+    try:
+        df_notes = conn.read(worksheet="ogloszenia", ttl=0).dropna(subset=["Tytul"])
+    except:
+        df_notes = pd.DataFrame(columns=["Data", "Grupa", "Tytul", "Tresc", "Autor"])
+
+    # --- SZUKAJ I FILTRUJ (Notatki) ---
+    st.sidebar.markdown("---")
+    note_search = st.sidebar.text_input("🔍 Szukaj w notatkach:", "")
+    note_group_filter = st.sidebar.multiselect("📁 Filtruj grupę:", df_notes["Grupa"].unique())
+
+    filtered_notes = df_notes.copy()
+    if note_search:
+        filtered_notes = filtered_notes[filtered_notes["Tytul"].str.lower().str.contains(note_search.lower()) | 
+                                        filtered_notes["Tresc"].str.lower().str.contains(note_search.lower())]
+    if note_group_filter:
+        filtered_notes = filtered_notes[filtered_notes["Grupa"].isin(note_group_filter)]
+
     with st.expander("➕ NOWA NOTATKA"):
         with st.form("form_note"):
             c_g, c_a = st.columns([2, 1])
@@ -148,22 +150,30 @@ elif menu == "NOTATKI":
             n_tytul = st.text_input("Tytuł")
             n_tresc = st.text_area("Treść")
             if st.form_submit_button("Zapisz"):
-                new_n = pd.DataFrame([{
-                    "Data": pd.Timestamp.now().strftime("%d.%m.%Y %H:%M"), 
-                    "Grupa": n_grupa.upper(), "Tytul": n_tytul.upper(), 
-                    "Tresc": n_tresc, "Autor": n_autor
-                }])
+                new_n = pd.DataFrame([{"Data": pd.Timestamp.now().strftime("%d.%m.%Y %H:%M"), "Grupa": n_grupa.upper(), "Tytul": n_tytul.upper(), "Tresc": n_tresc, "Autor": n_autor}])
                 conn.update(worksheet="ogloszenia", data=pd.concat([df_notes, new_n], ignore_index=True))
                 st.rerun()
 
-    t1, t2, t3 = st.tabs(["MOJE", "PARTNERA", "DO PRZYPISANIA"])
-    with t1:
-        for _, r in df_notes[df_notes["Autor"] == user].iloc[::-1].iterrows():
-            st.info(f"**{r['Grupa']}** | {r['Tytul']}\n\n{r['Tresc']}")
-    with t2:
-        other = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
-        for _, r in df_notes[df_notes["Autor"] == other].iloc[::-1].iterrows():
-            st.warning(f"**{r['Grupa']}** | {r['Tytul']}\n\n{r['Tresc']}")
-    with t3:
-        for _, r in df_notes[df_notes["Autor"] == "DO USTALENIA"].iloc[::-1].iterrows():
-            st.error(f"**{r['Grupa']}** | {r['Tytul']}\n\n{r['Tresc']}")
+    # Wyświetlanie notatek w formie kart (Twoje na kolorowo)
+    for _, r in filtered_notes.iloc[::-1].iterrows():
+        # Kolorystyka karty w zależności od właściciela
+        card_color = "#e3f2fd" if r['Autor'] == user else "#ffffff"
+        border_color = "#007bff" if r['Autor'] == user else "#ddd"
+        
+        st.markdown(f"""
+        <div style="border: 2px solid {border_color}; border-radius: 10px; padding: 15px; margin-bottom: 10px; background-color: {card_color}; shadow: 2px 2px 5px rgba(0,0,0,0.1);">
+            <div style="display: flex; justify-content: space-between;">
+                <h3 style="margin:0; color: #004ba0;">{r['Tytul']}</h3>
+                <span style="background-color:#28a745; color:white; padding:2px 8px; border-radius:5px; font-size:0.8em;">{r['Grupa']}</span>
+            </div>
+            <small style="color:#666;">Data: {r['Data']} | Autor: {r['Autor']}</small>
+            <hr style="margin:10px 0;">
+            <p style="font-size:1.1em; white-space: pre-wrap;">{r['Tresc']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+# --- MODUŁ 3: ARCHIWUM ---
+elif menu == "ARCHIWUM (WRÓCIŁO)":
+    st.header("📁 Archiwum")
+    df_all = conn.read(worksheet="targi", ttl=0)
+    st.dataframe(df_all[df_all["Status"] == "WRÓCIŁO"], use_container_width=True, hide_index=True)
