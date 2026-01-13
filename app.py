@@ -35,19 +35,24 @@ menu = st.sidebar.radio("MENU", [
 
 # --- POBIERANIE DANYCH ---
 try:
+    # Harmonogram
     df_all = conn.read(worksheet="targi", ttl=0).dropna(subset=["Nazwa Targów"])
     df_all["Pierwszy wyjazd"] = pd.to_datetime(df_all["Pierwszy wyjazd"], errors='coerce')
     df_all["Data końca"] = pd.to_datetime(df_all["Data końca"], errors='coerce')
     df_all["Data końca"] = df_all["Data końca"].fillna(df_all["Pierwszy wyjazd"])
+    
+    # Notatki - DODANA KONWERSJA DATY
+    df_notes_raw = conn.read(worksheet="ogloszenia", ttl=0).dropna(subset=["Tytul"])
+    df_notes_raw["Data"] = pd.to_datetime(df_notes_raw["Data"], errors='coerce')
 except:
     df_all = pd.DataFrame()
+    df_notes_raw = pd.DataFrame(columns=["Data", "Grupa", "Tytul", "Tresc", "Autor"])
 
 # --- MODUŁ 1: HARMONOGRAM BIEŻĄCY ---
 if menu == "HARMONOGRAM BIEŻĄCY":
     st.header("📅 Harmonogram Operacyjny")
     df_active = df_all[df_all["Status"] != "WRÓCIŁO"].copy()
     
-    # Filtry
     col_s, col_l = st.columns([2, 1])
     search = col_s.text_input("Szukaj projektu:")
     f_log = col_l.multiselect("Logistyk:", options=df_active["Logistyk"].unique())
@@ -71,7 +76,7 @@ if menu == "HARMONOGRAM BIEŻĄCY":
 
 # --- MODUŁ 2: WIDOK KALENDARZA ---
 elif menu == "WIDOK KALENDARZA (SIATKA)":
-    st.header("📅 Grafik")
+    st.header("📅 Grafik Miesięczny")
     df_cal = df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna())].copy()
     events = []
     for _, r in df_cal.iterrows():
@@ -81,7 +86,7 @@ elif menu == "WIDOK KALENDARZA (SIATKA)":
 
 # --- MODUŁ 3: WYKRES GANTA ---
 elif menu == "WYKRES GANTA (OŚ CZASU)":
-    st.header("📊 Oś czasu")
+    st.header("📊 Oś czasu transportów")
     df_viz = df_all[df_all["Status"] != "WRÓCIŁO"].dropna(subset=["Pierwszy wyjazd"]).copy()
     if not df_viz.empty:
         fig = px.timeline(df_viz, x_start="Pierwszy wyjazd", x_end="Data końca", y="Nazwa Targów", color="Logistyk")
@@ -93,42 +98,44 @@ elif menu == "ARCHIWUM (WRÓCIŁO)":
     st.header("📁 Archiwum")
     st.dataframe(df_all[df_all["Status"] == "WRÓCIŁO"], use_container_width=True)
 
-# --- MODUŁ 5: NOTATKI (Z BLOKADĄ EDYCJI OBCEJ) ---
+# --- MODUŁ 5: NOTATKI (POPRAWIONY BŁĄD TYPÓW) ---
 elif menu == "NOTATKI":
     st.header("📌 Notatki i Zadania")
     
-    # Pobranie notatek
-    try:
-        df_notes = conn.read(worksheet="ogloszenia", ttl=0).dropna(subset=["Tytul"])
-    except:
-        df_notes = pd.DataFrame(columns=["Data", "Grupa", "Tytul", "Tresc", "Autor"])
+    # Separacja i czyszczenie pod edytor
+    my_notes = df_notes_raw[df_notes_raw["Autor"] == user].copy()
+    other_notes = df_notes_raw[df_notes_raw["Autor"] != user].copy()
 
-    # PODZIAŁ NA TWOJE I INNE (Zasada: edytujesz tylko swoje)
-    st.subheader("📝 Twoje notatki (Możesz edytować)")
-    my_notes = df_notes[df_notes["Autor"] == user].copy()
-    other_notes = df_notes[df_notes["Autor"] != user].copy()
-
-    # Edytor tylko dla Twoich notatek
+    st.subheader(f"📝 Twoje notatki ({user})")
+    
+    # POPRAWKA: Zabezpieczenie przed błędem StreamlitAPIException
     edited_my_notes = st.data_editor(
         my_notes, 
         use_container_width=True, 
         hide_index=True, 
         num_rows="dynamic",
         column_config={
+            "Data": st.column_config.DateColumn("Data", format="YYYY-MM-DD"),
             "Autor": st.column_config.TextColumn("Autor", disabled=True, default=user),
-            "Data": st.column_config.DateColumn("Data", format="YYYY-MM-DD")
+            "Tresc": st.column_config.TextColumn("Treść notatki", width="large")
         }
     )
 
     if st.button("💾 ZAPISZ MOJE NOTATKI"):
-        # Automatyczne przypisanie autora do nowych wierszy
-        edited_my_notes["Autor"] = user
-        # Połączenie Twoich zmienionych notatek z notatkami partnera (których nie ruszałeś)
-        final_notes = pd.concat([edited_my_notes, other_notes], ignore_index=True)
+        save_my = edited_my_notes.copy()
+        # Konwersja daty na tekst do arkusza
+        save_my["Data"] = save_my["Data"].dt.strftime('%Y-%m-%d').fillna('')
+        save_my["Autor"] = user
+        
+        # Konwersja daty dla pozostałych notatek przed połączeniem
+        other_notes_save = other_notes.copy()
+        other_notes_save["Data"] = other_notes_save["Data"].dt.strftime('%Y-%m-%d').fillna('')
+        
+        final_notes = pd.concat([save_my, other_notes_save], ignore_index=True)
         conn.update(worksheet="ogloszenia", data=final_notes)
-        st.success("Twoje notatki zostały zaktualizowane!")
+        st.success("Zaktualizowano Twoje notatki!")
         st.rerun()
 
     st.markdown("---")
-    st.subheader("👁️ Notatki pozostałych (Tylko do odczytu)")
+    st.subheader("👁️ Podgląd pozostałych notatek")
     st.dataframe(other_notes, use_container_width=True, hide_index=True)
