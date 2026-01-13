@@ -5,93 +5,97 @@ import plotly.express as px
 from streamlit_calendar import calendar
 from datetime import datetime, timedelta
 
-# --- 1. KONFIGURACJA WIZUALNA (STYL GÓRALSKI) ---
+# --- 1. KONFIGURACJA WIZUALNA (STYL PRL / MASZYNA DO PISANIA) ---
 st.set_page_config(page_title="SQM LOGISTICS PRO", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Arvo:wght@400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&display=swap');
     
-    /* Tło i główna czcionka */
+    /* Globalny styl - maszyna do pisania i tło 'betonowe' */
     .stApp { 
-        background-color: #f4f1ea; 
-        font-family: 'Segoe UI', sans-serif;
+        background-color: #dcdcdc; 
+        font-family: 'Courier New', Courier, monospace;
+        color: #222;
     }
     
-    /* Sidebar - styl ciemnego drewna */
+    /* Sidebar - jak stare szafki metalowe */
     [data-testid="stSidebar"] { 
-        background-color: #2c1a12; 
-        border-right: 3px solid #8b0000;
-        color: #ffffff;
+        background-color: #4b5320; /* Wojskowa zieleń / urzędowa */
+        border-right: 5px double #2c3114;
     }
-    [data-testid="stSidebar"] p, [data-testid="stSidebar"] h2 {
-        color: #f4f1ea !important;
+    [data-testid="stSidebar"] * {
+        color: #f0ead6 !important; /* Kolor starego papieru */
+        font-family: 'Courier New', Courier, monospace !important;
     }
 
-    /* Karty i kontenery - imitacja jasnego drewna / papieru */
+    /* Kontenery - styl teczki na dokumenty */
     div[data-testid="stMetric"], .element-container, .stDataFrame {
-        background-color: #ffffff; 
-        border-radius: 5px; 
+        background-color: #f0ead6; 
+        border: 2px solid #555;
+        border-radius: 0px;
+        box-shadow: 5px 5px 0px #333;
         padding: 15px;
-        box-shadow: 3px 3px 0px #8b0000; 
-        border: 1px solid #d2b48c;
     }
 
-    /* Przyciski - kolor "czerwone korale" */
+    /* Przyciski - jak stare przełączniki */
     .stButton>button {
-        background-color: #8b0000; 
-        color: white; 
-        border-radius: 2px;
-        border: 2px solid #5a0000; 
-        padding: 0.6rem 1.2rem; 
-        font-weight: 700;
+        background-color: #2b2b2b; 
+        color: #f0ead6; 
+        border-radius: 0px;
+        border: 3px outset #555;
+        font-family: 'Courier New', Courier, monospace;
+        font-weight: bold;
         text-transform: uppercase;
-        letter-spacing: 1px;
     }
-    .stButton>button:hover {
-        background-color: #a50000;
-        border-color: #8b0000;
-        color: white;
+    .stButton>button:active {
+        border: 3px inset #555;
     }
 
-    /* Task Card - folklorystyczny akcent */
+    /* Task Card - jak druczek KW / zlecenia */
     .task-card {
-        background: #fff; 
-        padding: 12px; 
-        border-radius: 4px; 
-        margin-bottom: 10px;
-        border-left: 8px solid #8b0000; 
-        border-right: 1px solid #d2b48c;
-        border-bottom: 1px solid #d2b48c;
-        color: #333;
+        background: #e8e4c9; 
+        border: 1px solid #999;
+        border-left: 10px solid #555;
+        padding: 10px;
+        margin-bottom: 8px;
+        color: #111;
+        font-size: 0.9rem;
     }
 
-    /* Box rekomendacji - granat podhalański */
+    /* Box rekomendacji - imitacja stempla / ważnego komunikatu */
     .recommendation-box {
-        background-color: #1a2a44; 
-        color: #ffffff; 
-        padding: 15px; 
-        border-radius: 0px; 
-        border-left: 10px solid #8b0000;
-        line-height: 1.6; 
+        background-color: #fff; 
+        color: #8b0000; 
+        padding: 20px; 
+        border: 3px solid #8b0000;
+        text-transform: uppercase;
+        font-weight: bold;
         margin-bottom: 20px;
+        position: relative;
     }
-
-    .uk-alert {
-        color: #ffffff; 
-        background-color: #4a1010; 
-        padding: 10px; 
-        border-radius: 0px; 
-        font-size: 0.85rem; 
-        margin-top: 10px; 
-        border: 1px dashed #f4f1ea;
+    .recommendation-box::after {
+        content: "ZATWIERDZONO";
+        position: absolute;
+        top: 5px;
+        right: 10px;
+        font-size: 0.7rem;
+        opacity: 0.3;
+        transform: rotate(-15deg);
     }
 
     /* Nagłówki sekcji */
     h1, h2, h3 {
-        color: #2c1a12 !important;
-        border-bottom: 2px solid #8b0000;
-        padding-bottom: 5px;
+        color: #1a1a1a !important;
+        font-family: 'Courier New', Courier, monospace !important;
+        border-bottom: 3px double #333;
+        text-transform: uppercase;
+    }
+
+    /* Stylizacja tabel i edytorów */
+    .stDataEditor, [data-testid="stTable"] {
+        border: 1px solid #000;
+        background-color: #f0ead6 !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -123,13 +127,13 @@ def calculate_logistics(city, start_date, end_date, weight):
             ata = 166.0
             if meta["vClass"] == "BUS":
                 uk_extra = ata + 332.0 + 19.0
-                uk_details = "Prom (€332), ATA (€166), Mosty (€19)"
+                uk_details = "PROM (€332), ATA (€166), MOSTY (€19)"
             elif meta["vClass"] == "SOLO":
                 uk_extra = ata + 450.0 + 19.0 + 40.0
-                uk_details = "Prom (€450), ATA (€166), Mosty (€19), Low Ems (€40)"
+                uk_details = "PROM (€450), ATA (€166), MOSTY (€19), LOW EMS (€40)"
             else:
                 uk_extra = ata + 522.0 + 19.0 + 69.0 + 30.0
-                uk_details = "Prom (€522), ATA (€166), Mosty (€19), Low Ems (€69), Fuel (€30)"
+                uk_details = "PROM (€522), ATA (€166), MOSTY (€19), LOW EMS (€69), FUEL (€30)"
         
         total = (base_exp * 2) + (meta["postoj"] * overlay) + uk_extra
         results.append({"name": name, "cost": total, "uk_info": uk_details})
@@ -137,17 +141,17 @@ def calculate_logistics(city, start_date, end_date, weight):
 
 # --- 3. POŁĄCZENIE I LOGOWANIE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
-st.sidebar.markdown("<h2 style='text-align: center; color: #f4f1ea;'>SQM LOGISTYKA</h2>", unsafe_allow_html=True)
-user = st.sidebar.selectbox("👤 Użytkownik:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
+st.sidebar.markdown("<h2 style='text-align: center;'>SQM LOGISTYKA</h2>", unsafe_allow_html=True)
+user = st.sidebar.selectbox("👤 OBYWATEL:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
 user_pins = {"DUKIEL": "9607", "KACZMAREK": "1225"}
 
 is_authenticated = False
 if user != "Wybierz...":
-    input_pin = st.sidebar.text_input("PIN:", type="password")
+    input_pin = st.sidebar.text_input("KOD DOSTĘPU:", type="password")
     if input_pin == user_pins.get(user):
         is_authenticated = True
     elif input_pin:
-        st.sidebar.error("❌ Błędny PIN")
+        st.sidebar.error("❌ ODMOWA DOSTĘPU")
 
 if not is_authenticated:
     st.stop()
@@ -162,31 +166,30 @@ try:
     df_notes["Data"] = pd.to_datetime(df_notes["Data"], errors='coerce')
     df_notes["Autor"] = df_notes["Autor"].astype(str).str.upper()
 except Exception:
-    st.error("Błąd połączenia z bazą danych.")
+    st.error("BŁĄD SYSTEMU PRZETWARZANIA DANYCH.")
     st.stop()
 
 # --- 5. MENU ---
-menu = st.sidebar.radio("Nawigacja:", ["🏠 CENTRUM OPERACYJNE", "📅 KALENDARZ", "📊 OŚ CZASU (GANTT)", "📋 TABLICA ZADAŃ"])
+menu = st.sidebar.radio("DYREKTYWA:", ["🏠 CENTRUM OPERACYJNE", "📅 KALENDARZ", "📊 OŚ CZASU (GANTT)", "📋 TABLICA ZADAŃ"])
 
 # --- MODUŁ 1: CENTRUM OPERACYJNE ---
 if menu == "🏠 CENTRUM OPERACYJNE":
-    st.title("🛰️ Centrum Operacyjne SQM")
+    st.title("🛰️ CENTRUM OPERACYJNE SQM")
     
-    # KALKULATOR KOSZTÓW
-    with st.expander("🧮 Kalkulator Cennikowy 2026", expanded=True):
+    with st.expander("🧮 KALKULATOR LOGISTYCZNY (NORMA 2026)", expanded=True):
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
-        t_city = c1.selectbox("Kierunek (Miasto):", sorted(list(EXP_RATES["WŁASNY SQM BUS"].keys())))
-        t_weight = c2.number_input("Waga ładunku (kg):", min_value=0, value=500, step=100)
-        t_start = c3.date_input("Planowany wyjazd:", datetime.now())
-        t_end = c4.date_input("Planowany powrót:", datetime.now() + timedelta(days=4))
+        t_city = c1.selectbox("KIERUNEK:", sorted(list(EXP_RATES["WŁASNY SQM BUS"].keys())))
+        t_weight = c2.number_input("WAGA ŁADUNKU (KG):", min_value=0, value=500, step=100)
+        t_start = c3.date_input("DATA WYJAZDU:", datetime.now())
+        t_end = c4.date_input("DATA POWROTU:", datetime.now() + timedelta(days=4))
         
         calc = calculate_logistics(t_city, pd.to_datetime(t_start), pd.to_datetime(t_end), t_weight)
         if calc:
             st.markdown(f"""
             <div class="recommendation-box">
-                <b style="color: #d2b48c;">Rekomendowany transport:</b> {calc['name']}<br>
-                <b style="color: #d2b48c;">Koszt szacowany:</b> <span style="font-size: 1.5rem; font-weight: bold;">€ {calc['cost']:.2f} netto</span>
-                {f'<div class="uk-alert"><b>Doliczono koszty UK:</b><br>{calc["uk_info"]}</div>' if calc["uk_info"] else ""}
+                PRZYDZIAŁ TRANSPORTU: {calc['name']}<br>
+                KOSZT CAŁKOWITY: <span style="font-size: 1.6rem;">€ {calc['cost']:.2f}</span>
+                {f'<div class="uk-alert" style="color: #000; background: #ddd; border: 1px dashed #000; padding: 5px;">ADNOTACJA UK:<br>{calc["uk_info"]}</div>' if calc["uk_info"] else ""}
             </div>
             """, unsafe_allow_html=True)
 
@@ -196,20 +199,20 @@ if menu == "🏠 CENTRUM OPERACYJNE":
     active_df = df_all[active_mask].copy()
     archived_df = df_all[~active_mask].copy()
 
-    st.subheader(f"✍️ Twoje Aktywne Projekty (Logistyk: {user})")
+    st.subheader(f"📋 LISTA PROJEKTÓW: OBYWATEL {user}")
     my_tasks = active_df[active_df["Logistyk"] == user].copy()
     
     col_config = {
-        "Status": st.column_config.SelectboxColumn("Status", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"], required=True),
-        "Logistyk": st.column_config.SelectboxColumn("Logistyk", options=["DUKIEL", "KACZMAREK"], required=True),
-        "Sloty": st.column_config.SelectboxColumn("Sloty", options=["TAK", "NIE", "NIE POTRZEBA"]),
-        "Pierwszy wyjazd": st.column_config.DateColumn("Wyjazd"),
-        "Data końca": st.column_config.DateColumn("Powrót")
+        "Status": st.column_config.SelectboxColumn("STATUS", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"], required=True),
+        "Logistyk": st.column_config.SelectboxColumn("LOGISTYK", options=["DUKIEL", "KACZMAREK"], required=True),
+        "Sloty": st.column_config.SelectboxColumn("SLOTY", options=["TAK", "NIE", "NIE POTRZEBA"]),
+        "Pierwszy wyjazd": st.column_config.DateColumn("WYJAZD"),
+        "Data końca": st.column_config.DateColumn("POWRÓT")
     }
     
     edited_my = st.data_editor(my_tasks, use_container_width=True, hide_index=True, column_config=col_config, key="editor_ops")
 
-    if st.button("💾 ZAPISZ HARMONOGRAM"):
+    if st.button("💾 ZATWIERDŹ I ZAPISZ DO PROTOKOŁU"):
         others = df_all[~df_all.index.isin(my_tasks.index)].copy()
         for df in [edited_my, others]:
             df["Pierwszy wyjazd"] = pd.to_datetime(df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d').fillna('')
@@ -218,83 +221,44 @@ if menu == "🏠 CENTRUM OPERACYJNE":
         final_df = pd.concat([edited_my, others], ignore_index=True)
         conn.update(worksheet="targi", data=final_df)
         st.cache_data.clear()
-        st.success("Zmiany zapisane pomyślnie.")
+        st.success("PROTOKÓŁ ZAKTUALIZOWANY.")
         st.rerun()
-
-    st.markdown("---")
-    
-    partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
-    st.subheader(f"👁️ Podgląd Partnera (Tylko do odczytu: {partner})")
-    partner_tasks = active_df[active_df["Logistyk"] == partner].copy()
-    st.dataframe(partner_tasks, use_container_width=True, hide_index=True)
-
-    with st.expander("📁 Zobacz Archiwum (Zrealizowane / WRÓCIŁO)"):
-        st.dataframe(archived_df, use_container_width=True, hide_index=True)
 
 # --- MODUŁ 2: KALENDARZ ---
 elif menu == "📅 KALENDARZ":
-    st.title("📅 Grafik Wyjazdów")
+    st.title("📅 HARMONOGRAM OGÓLNY")
     events = []
     for _, r in df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna())].iterrows():
-        # Kolory: Ciemny granat dla Dukiela, Brązowy dla Kaczmarka
-        color = "#1a2a44" if r["Logistyk"] == "DUKIEL" else "#5c4033"
+        color = "#2b2b2b" if r["Logistyk"] == "DUKIEL" else "#4b5320"
         events.append({
             "title": f"[{r['Logistyk']}] {r['Nazwa Targów']}",
             "start": r["Pierwszy wyjazd"].strftime("%Y-%m-%d"),
             "end": (r["Data końca"] + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
             "backgroundColor": color,
-            "borderColor": "#8b0000"
+            "borderColor": "#000"
         })
     calendar(events=events, options={"locale": "pl", "firstDay": 1})
 
 # --- MODUŁ 3: GANTT ---
 elif menu == "📊 OŚ CZASU (GANTT)":
-    st.title("📊 Obłożenie Floty")
+    st.title("📊 WYKORZYSTANIE MOCY PRZEROBOWEJ")
     df_viz = df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna()) & (df_all["Data końca"].notna())].copy()
     if not df_viz.empty:
         fig = px.timeline(df_viz, x_start="Pierwszy wyjazd", x_end="Data końca", y="Nazwa Targów", 
-                          color="Logistyk", color_discrete_map={"DUKIEL": "#1a2a44", "KACZMAREK": "#8b4513"},
+                          color="Logistyk", color_discrete_map={"DUKIEL": "#2b2b2b", "KACZMAREK": "#4b5320"},
                           template="plotly_white")
-        fig.update_yaxes(autorange="reversed")
-        fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+        fig.update_layout(font_family="Courier New", paper_bgcolor='#f0ead6', plot_bgcolor='#f0ead6')
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Brak aktywnych transportów.")
 
 # --- MODUŁ 4: TABLICA ZADAŃ ---
 elif menu == "📋 TABLICA ZADAŃ":
-    st.title("📋 Kanban & Archiwum Zadania")
-    limit_date = datetime.now() - timedelta(days=90)
-    
+    st.title("📋 PLANOWANIE PRACY")
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("<h3 style='color: #8b0000;'>🔴 DO ZROBIENIA</h3>", unsafe_allow_html=True)
+        st.markdown("### 🔴 DO REALIZACJI")
         for _, t in df_notes[df_notes["Status"] == "DO ZROBIENIA"].iterrows():
-            st.markdown(f"<div class='task-card' style='border-left-color: #8b0000'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>Autor: {t['Autor']}</small></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='task-card'><b>{t.get('Tytul', 'ZADANIE')}</b><br><small>REFERENT: {t['Autor']}</small></div>", unsafe_allow_html=True)
     with c2:
-        st.markdown("<h3 style='color: #d2b48c;'>🟡 W TRAKCIE</h3>", unsafe_allow_html=True)
+        st.markdown("### 🟡 W TOKU")
         for _, t in df_notes[df_notes["Status"] == "W TRAKCIE"].iterrows():
-            st.markdown(f"<div class='task-card' style='border-left-color: #d2b48c'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>Autor: {t['Autor']}</small></div>", unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.subheader("🖋️ Zarządzaj swoimi zadaniami")
-    my_notes = df_notes[df_notes["Autor"] == user].copy()
-    
-    edited_n = st.data_editor(my_notes, use_container_width=True, hide_index=True, num_rows="dynamic",
-                              column_config={"Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"], required=True)})
-    
-    if st.button("💾 AKTUALIZUJ TABLICĘ"):
-        new_my = edited_n.copy()
-        new_my["Autor"] = user
-        new_my.loc[new_my["Status"] == "WYKONANE", "Data"] = new_my["Data"].fillna(datetime.now())
-        
-        others_n = df_notes[df_notes["Autor"] != user].copy()
-        combined = pd.concat([new_my, others_n], ignore_index=True)
-        combined["Data"] = pd.to_datetime(combined["Data"], errors='coerce')
-        final_notes = combined[~((combined["Status"] == "WYKONANE") & (combined["Data"] < limit_date))].copy()
-        final_notes["Data"] = final_notes["Data"].dt.strftime('%Y-%m-%d').fillna('')
-        
-        conn.update(worksheet="ogloszenia", data=final_notes)
-        st.cache_data.clear()
-        st.success("Tablica zaktualizowana.")
-        st.rerun()
+            st.markdown(f"<div class='task-card' style='border-left-color: #8b0000'><b>{t.get('Tytul', 'ZADANIE')}</b><br><small>REFERENT: {t['Autor']}</small></div>", unsafe_allow_html=True)
