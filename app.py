@@ -5,12 +5,12 @@ import plotly.express as px
 from streamlit_calendar import calendar
 from datetime import datetime, timedelta
 
-# --- 1. KONFIGURACJA WIZUALNA (STYL PRL / MASZYNA DO PISANIA) ---
+# --- 1. KONFIGURACJA WIZUALNA (STYL PRL - WYSOKI KONTRAST) ---
 st.set_page_config(page_title="SQM LOGISTICS PRO", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap');
     
     /* Globalny styl - maszyna do pisania i tło 'betonowe' */
     .stApp { 
@@ -19,14 +19,34 @@ st.markdown("""
         color: #222;
     }
     
-    /* Sidebar - jak stare szafki metalowe */
+    /* SIDEBAR - Urzędowa zieleń */
     [data-testid="stSidebar"] { 
-        background-color: #4b5320; /* Wojskowa zieleń / urzędowa */
+        background-color: #4b5320; 
         border-right: 5px double #2c3114;
     }
-    [data-testid="stSidebar"] * {
-        color: #f0ead6 !important; /* Kolor starego papieru */
+
+    /* Napisy nad polami na sidebarze (Etykiety) */
+    [data-testid="stSidebar"] label p {
+        color: #f0ead6 !important;
+        font-weight: bold;
+        text-transform: uppercase;
+        font-size: 0.9rem;
+    }
+
+    /* Napisy WEWNĄTRZ pól wyboru i wpisywania - CZARNY TUSZ */
+    div[data-baseweb="select"] > div, 
+    div[data-baseweb="input"] input,
+    div[role="radiogroup"] label p {
+        color: #000000 !important;
         font-family: 'Courier New', Courier, monospace !important;
+        font-weight: bold !important;
+    }
+
+    /* Tło pól input na sidebarze */
+    [data-testid="stSidebar"] div[data-baseweb="select"], 
+    [data-testid="stSidebar"] div[data-baseweb="input"] {
+        background-color: #f0ead6 !important;
+        border: 1px solid #000 !important;
     }
 
     /* Kontenery - styl teczki na dokumenty */
@@ -47,12 +67,14 @@ st.markdown("""
         font-family: 'Courier New', Courier, monospace;
         font-weight: bold;
         text-transform: uppercase;
+        width: 100%;
     }
     .stButton>button:active {
         border: 3px inset #555;
+        background-color: #1a1a1a;
     }
 
-    /* Task Card - jak druczek KW / zlecenia */
+    /* Task Card - jak druczek zlecenia */
     .task-card {
         background: #e8e4c9; 
         border: 1px solid #999;
@@ -60,28 +82,17 @@ st.markdown("""
         padding: 10px;
         margin-bottom: 8px;
         color: #111;
-        font-size: 0.9rem;
     }
 
-    /* Box rekomendacji - imitacja stempla / ważnego komunikatu */
+    /* Box rekomendacji - imitacja stempla */
     .recommendation-box {
         background-color: #fff; 
         color: #8b0000; 
         padding: 20px; 
-        border: 3px solid #8b0000;
+        border: 4px double #8b0000;
         text-transform: uppercase;
         font-weight: bold;
         margin-bottom: 20px;
-        position: relative;
-    }
-    .recommendation-box::after {
-        content: "ZATWIERDZONO";
-        position: absolute;
-        top: 5px;
-        right: 10px;
-        font-size: 0.7rem;
-        opacity: 0.3;
-        transform: rotate(-15deg);
     }
 
     /* Nagłówki sekcji */
@@ -90,12 +101,6 @@ st.markdown("""
         font-family: 'Courier New', Courier, monospace !important;
         border-bottom: 3px double #333;
         text-transform: uppercase;
-    }
-
-    /* Stylizacja tabel i edytorów */
-    .stDataEditor, [data-testid="stTable"] {
-        border: 1px solid #000;
-        background-color: #f0ead6 !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -188,8 +193,8 @@ if menu == "🏠 CENTRUM OPERACYJNE":
             st.markdown(f"""
             <div class="recommendation-box">
                 PRZYDZIAŁ TRANSPORTU: {calc['name']}<br>
-                KOSZT CAŁKOWITY: <span style="font-size: 1.6rem;">€ {calc['cost']:.2f}</span>
-                {f'<div class="uk-alert" style="color: #000; background: #ddd; border: 1px dashed #000; padding: 5px;">ADNOTACJA UK:<br>{calc["uk_info"]}</div>' if calc["uk_info"] else ""}
+                KOSZT CAŁKOWITY: <span style="font-size: 1.8rem;">€ {calc['cost']:.2f}</span>
+                {f'<div style="color: #000; border: 1px dashed #000; padding: 5px; margin-top:10px;">ADNOTACJA UK:<br>{calc["uk_info"]}</div>' if calc["uk_info"] else ""}
             </div>
             """, unsafe_allow_html=True)
 
@@ -204,7 +209,7 @@ if menu == "🏠 CENTRUM OPERACYJNE":
     
     col_config = {
         "Status": st.column_config.SelectboxColumn("STATUS", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"], required=True),
-        "Logistyk": st.column_config.SelectboxColumn("LOGISTYK", options=["DUKIEL", "KACZMAREK"], required=True),
+        "Logistyk": st.column_config.SelectboxColumn("REFERENT", options=["DUKIEL", "KACZMAREK"], required=True),
         "Sloty": st.column_config.SelectboxColumn("SLOTY", options=["TAK", "NIE", "NIE POTRZEBA"]),
         "Pierwszy wyjazd": st.column_config.DateColumn("WYJAZD"),
         "Data końca": st.column_config.DateColumn("POWRÓT")
@@ -247,7 +252,12 @@ elif menu == "📊 OŚ CZASU (GANTT)":
         fig = px.timeline(df_viz, x_start="Pierwszy wyjazd", x_end="Data końca", y="Nazwa Targów", 
                           color="Logistyk", color_discrete_map={"DUKIEL": "#2b2b2b", "KACZMAREK": "#4b5320"},
                           template="plotly_white")
-        fig.update_layout(font_family="Courier New", paper_bgcolor='#f0ead6', plot_bgcolor='#f0ead6')
+        fig.update_layout(
+            font_family="Courier New", 
+            paper_bgcolor='#f0ead6', 
+            plot_bgcolor='#f0ead6',
+            title_font_color="#000"
+        )
         st.plotly_chart(fig, use_container_width=True)
 
 # --- MODUŁ 4: TABLICA ZADAŃ ---
@@ -261,4 +271,26 @@ elif menu == "📋 TABLICA ZADAŃ":
     with c2:
         st.markdown("### 🟡 W TOKU")
         for _, t in df_notes[df_notes["Status"] == "W TRAKCIE"].iterrows():
-            st.markdown(f"<div class='task-card' style='border-left-color: #8b0000'><b>{t.get('Tytul', 'ZADANIE')}</b><br><small>REFERENT: {t['Autor']}</small></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='task-card' style='border-left: 10px solid #8b0000'><b>{t.get('Tytul', 'ZADANIE')}</b><br><small>REFERENT: {t['Autor']}</small></div>", unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.subheader("🖋️ REJESTR ZADAŃ OSOBISTYCH")
+    my_notes = df_notes[df_notes["Autor"] == user].copy()
+    
+    edited_n = st.data_editor(my_notes, use_container_width=True, hide_index=True, num_rows="dynamic",
+                              column_config={"Status": st.column_config.SelectboxColumn("STATUS", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"], required=True)})
+    
+    if st.button("💾 ZAPISZ ZMIANY W REJESTRZE"):
+        new_my = edited_n.copy()
+        new_my["Autor"] = user
+        new_my.loc[new_my["Status"] == "WYKONANE", "Data"] = new_my["Data"].fillna(datetime.now())
+        others_n = df_notes[df_notes["Autor"] != user].copy()
+        combined = pd.concat([new_my, others_n], ignore_index=True)
+        combined["Data"] = pd.to_datetime(combined["Data"], errors='coerce')
+        limit_date = datetime.now() - timedelta(days=90)
+        final_notes = combined[~((combined["Status"] == "WYKONANE") & (combined["Data"] < limit_date))].copy()
+        final_notes["Data"] = final_notes["Data"].dt.strftime('%Y-%m-%d').fillna('')
+        conn.update(worksheet="ogloszenia", data=final_notes)
+        st.cache_data.clear()
+        st.success("REJESTR ZAKTUALIZOWANY.")
+        st.rerun()
