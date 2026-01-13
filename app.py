@@ -1,19 +1,16 @@
 import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
-import plotly.express as px
 
 # Konfiguracja strony SQM
 st.set_page_config(page_title="SQM LOGISTYKA 2026", layout="wide")
-
-# Połączenie z Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- SYSTEM AUTORYZACJI PIN ---
-st.sidebar.title("🔐 PANEL LOGOWANIA SQM")
-user = st.sidebar.selectbox("Użytkownik:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
+# --- SYSTEM LOGIN (PIN) ---
+st.sidebar.title("🔐 LOGOWANIE SQM")
+user = st.sidebar.selectbox("Wybierz użytkownika:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
 
-# PIN-Y użytkowników
+# PIN-y zgodnie z ustaleniami
 user_pins = {
     "DUKIEL": "9607", 
     "KACZMAREK": "1225"
@@ -21,7 +18,7 @@ user_pins = {
 
 is_authenticated = False
 if user != "Wybierz...":
-    input_pin = st.sidebar.text_input("Wpisz swój PIN:", type="password")
+    input_pin = st.sidebar.text_input("Podaj PIN:", type="password")
     if input_pin == user_pins[user]:
         st.sidebar.success(f"Zalogowano: {user}")
         is_authenticated = True
@@ -29,157 +26,127 @@ if user != "Wybierz...":
         st.sidebar.error("Błędny PIN")
 
 if not is_authenticated:
-    st.info("Aby zarządzać logistyką, wybierz użytkownika i wpisz PIN w panelu bocznym.")
+    st.info("Zaloguj się w panelu bocznym, aby uzyskać dostęp do harmonogramu.")
     st.stop()
 
-# --- MENU GŁÓWNE ---
-st.sidebar.markdown("---")
-menu = st.sidebar.radio("Nawigacja", ["HARMONOGRAM TARGÓW", "NOTATKI", "Lista zadań"])
+# --- NAWIGACJA ---
+menu = st.sidebar.radio("MENU", ["HARMONOGRAM BIEŻĄCY", "ARCHIWUM (WRÓCIŁO)", "NOTATKI"])
 
-# --- MODUŁ 1: HARMONOGRAM TARGÓW ---
-if menu == "HARMONOGRAM TARGÓW":
-    st.header("📅 Harmonogram i Statusy Wyjazdów")
+# --- MODUŁ 1: HARMONOGRAM BIEŻĄCY ---
+if menu == "HARMONOGRAM BIEŻĄCY":
+    st.header("📅 Bieżący Harmonogram Wyjazdów")
     
     try:
-        df_targi = conn.read(worksheet="targi", ttl=0)
-        df_targi = df_targi.dropna(subset=["Nazwa Targów"])
-    except Exception:
-        df_targi = pd.DataFrame(columns=["Nazwa Targów", "Pierwszy wyjazd", "Data końca", "Status", "Logistyk"])
+        # Pobieranie danych z ttl=0 dla pełnej synchronizacji
+        df_all = conn.read(worksheet="targi", ttl=0).dropna(subset=["Nazwa Targów"])
+    except:
+        df_all = pd.DataFrame(columns=["Nazwa Targów", "Pierwszy wyjazd", "Zajętość auta", "Sloty", "Auta", "Grupa WhatsApp", "Parkingi", "Status", "Logistyk"])
 
-    # Formularz dodawania
-    with st.expander("➕ Dodaj nowy projekt (Targi / Wyjazd)"):
-        with st.form("targi_form", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-            nazwa = col1.text_input("Nazwa Targów")
-            # Dodana opcja DO PRZYPISANIA dla nowych tematów
-            logistyk_opcja = col2.selectbox("Logistyk odpowiedzialny", ["DO PRZYPISANIA", "DUKIEL", "KACZMAREK", "OBAJ"])
+    # Filtracja: Tylko to, co nie ma statusu "WRÓCIŁO"
+    df_active = df_all[df_all["Status"] != "WRÓCIŁO"]
+
+    with st.expander("➕ DODAJ NOWE TARGI"):
+        with st.form("form_targi", clear_on_submit=True):
+            col_a, col_b = st.columns(2)
+            nazwa = col_a.text_input("Nazwa Targów")
+            data_wyjazdu = col_b.date_input("Pierwszy wyjazd")
             
-            c1, c2 = st.columns(2)
-            d_start = c1.date_input("Pierwszy wyjazd")
-            d_koniec = c2.date_input("Data końca (powrót)")
+            st.markdown("---")
+            c1, c2, c3 = st.columns(3)
+            zajetosc = c1.selectbox("Zajętość auta", ["TAK", "NIE"])
+            sloty = c2.selectbox("Sloty", ["TAK", "NIE", "NIE POTRZEBA"])
+            auta = c3.selectbox("Auta", ["TAK", "NIE", "TRANSPORT KLIENTA"])
             
-            status = st.selectbox("STATUS", ["OCZEKUJE", "W TRAKCIE", "ZAKOŃCZONE", "ANULOWANE"])
+            c4, c5, c6 = st.columns(3)
+            whatsapp = c4.selectbox("Grupa WhatsApp", ["TAK", "NIE", "NIE DOTYCZY"])
+            parkingi = c5.selectbox("Parkingi", ["TAK", "NIE", "TRANSPORT KLIENTA"])
+            logistyk = c6.selectbox("Logistyk", ["DUKIEL", "KACZMAREK", "TRANSPORT KLIENTA", "DO PRZYPISANIA"])
+            
+            status = st.selectbox("STATUS", ["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO"])
             
             if st.form_submit_button("Zapisz w harmonogramie"):
-                new_event = pd.DataFrame([{
-                    "Nazwa Targów": nazwa.upper(), 
-                    "Pierwszy wyjazd": d_start.strftime("%Y-%m-%d"), 
-                    "Data końca": d_koniec.strftime("%Y-%m-%d"), 
+                new_row = pd.DataFrame([{
+                    "Nazwa Targów": nazwa.upper(),
+                    "Pierwszy wyjazd": data_wyjazdu.strftime("%Y-%m-%d"),
+                    "Zajętość auta": zajetosc,
+                    "Sloty": sloty,
+                    "Auta": auta,
+                    "Grupa WhatsApp": whatsapp,
+                    "Parkingi": parkingi,
                     "Status": status,
-                    "Logistyk": logistyk_opcja
+                    "Logistyk": logistyk
                 }])
-                updated_targi = pd.concat([df_targi, new_event], ignore_index=True)
-                conn.update(worksheet="targi", data=updated_targi)
-                st.success(f"Zapisano projekt: {nazwa}")
+                
+                # Aktualizacja Arkusza
+                updated_df = pd.concat([df_all, new_row], ignore_index=True)
+                conn.update(worksheet="targi", data=updated_df)
+                st.success(f"Dodano: {nazwa}")
                 st.rerun()
 
-    if not df_targi.empty:
-        # Sekcja Wakatów (tematy do przypisania)
-        wakaty = df_targi[df_targi["Logistyk"] == "DO PRZYPISANIA"]
-        if not wakaty.empty:
-            st.warning("⚠️ TEMATY DO PRZYPISANIA (WAKATY)")
-            st.dataframe(wakaty, use_container_width=True, hide_index=True)
+    # Wyświetlanie tabeli aktywnej
+    if not df_active.empty:
+        # Kolorowanie wierszy dla lepszej widoczności w logistyce
+        def style_rows(row):
+            styles = [''] * len(row)
+            if row['Status'] == 'W TRAKCIE':
+                styles = ['background-color: #FFA500; color: black'] * len(row)
+            elif row['Status'] == 'OCZEKUJE':
+                styles = ['background-color: #90EE90; color: black'] * len(row)
+            return styles
 
-        # Oś czasu
-        st.subheader("Wizualizacja grafiku")
-        df_plot = df_targi.copy()
-        df_plot["Pierwszy wyjazd"] = pd.to_datetime(df_plot["Pierwszy wyjazd"])
-        df_plot["Data końca"] = pd.to_datetime(df_plot["Data końca"])
-        
-        fig = px.timeline(
-            df_plot, 
-            x_start="Pierwszy wyjazd", 
-            x_end="Data końca", 
-            y="Nazwa Targów", 
-            color="Status",
-            color_discrete_map={"OCZEKUJE": "#90EE90", "W TRAKCIE": "#FFA500", "ZAKOŃCZONE": "#808080"}
-        )
-        fig.update_yaxes(autorange="reversed")
-        st.plotly_chart(fig, use_container_width=True)
+        st.dataframe(df_active.style.apply(style_rows, axis=1), use_container_width=True, hide_index=True)
+    else:
+        st.info("Brak aktywnych transportów.")
 
-        # Pełna tabela
-        st.subheader("Pełna lista operacyjna")
-        def color_status(val):
-            if val == 'W TRAKCIE': return 'background-color: #FFA500; color: black'
-            if val == 'OCZEKUJE': return 'background-color: #90EE90; color: black'
-            return ''
-        
-        st.dataframe(df_targi.style.applymap(color_status, subset=['Status']), use_container_width=True, hide_index=True)
-
-# --- MODUŁ 2: NOTATKI ---
-elif menu == "NOTATKI":
-    st.header("📝 Notatki i Grupy Projektowe")
-    
+# --- MODUŁ 2: ARCHIWUM ---
+elif menu == "ARCHIWUM (WRÓCIŁO)":
+    st.header("📁 Archiwum Zakończonych Transportów")
     try:
-        df_notes = conn.read(worksheet="ogloszenia", ttl=0)
-        df_notes = df_notes.dropna(subset=["Tytul"])
-    except Exception:
+        df_all = conn.read(worksheet="targi", ttl=0)
+        df_arch = df_all[df_all["Status"] == "WRÓCIŁO"]
+        
+        if not df_arch.empty:
+            st.dataframe(df_arch, use_container_width=True, hide_index=True)
+        else:
+            st.info("Archiwum jest puste.")
+    except:
+        st.error("Błąd ładowania archiwum.")
+
+# --- MODUŁ 3: NOTATKI ---
+elif menu == "NOTATKI":
+    st.header("📌 Notatki Logistyczne")
+    try:
+        df_notes = conn.read(worksheet="ogloszenia", ttl=0).dropna(subset=["Tytul"])
+    except:
         df_notes = pd.DataFrame(columns=["Data", "Grupa", "Tytul", "Tresc", "Autor"])
 
-    with st.expander("➕ Nowa notatka"):
-        with st.form("note_form", clear_on_submit=True):
-            col1, col2 = st.columns([2, 1])
-            g = col1.text_input("Grupa / Targi (np. MWC BARCELONA)")
-            autor_opcja = col2.selectbox("Właściciel notatki", ["DO USTALENIA", "DUKIEL", "KACZMAREK"])
-            
-            t = st.text_input("Tytuł")
-            tr = st.text_area("Treść notatki")
+    with st.expander("➕ NOWA NOTATKA"):
+        with st.form("form_notes"):
+            col_n1, col_n2 = st.columns([2, 1])
+            grupa_n = col_n1.text_input("Grupa / Temat")
+            autor_n = col_n2.selectbox("Właściciel", ["DUKIEL", "KACZMAREK", "DO USTALENIA"])
+            tytul_n = st.text_input("Tytuł")
+            tresc_n = st.text_area("Treść")
             
             if st.form_submit_button("Zapisz Notatkę"):
                 new_note = pd.DataFrame([{
-                    "Data": pd.Timestamp.now().strftime("%d.%m.%Y %H:%M"), 
-                    "Grupa": g.upper(), 
-                    "Tytul": t.upper(), 
-                    "Tresc": tr, 
-                    "Autor": autor_opcja
+                    "Data": pd.Timestamp.now().strftime("%d.%m.%Y %H:%M"),
+                    "Grupa": grupa_n.upper(),
+                    "Tytul": tytul_n.upper(),
+                    "Tresc": tresc_n,
+                    "Autor": autor_n
                 }])
                 conn.update(worksheet="ogloszenia", data=pd.concat([df_notes, new_note], ignore_index=True))
-                st.success("Dodano notatkę!")
                 st.rerun()
 
-    # Filtrowanie po Grupie
-    st.sidebar.markdown("---")
-    grupy = ["WSZYSTKIE"] + sorted(df_notes["Grupa"].unique().tolist())
-    wybrana_grupa = st.sidebar.selectbox("Filtruj po targach:", grupy)
-
-    t1, t2, t3 = st.tabs(["MOJE NOTATKI", "NOTATKI PARTNERA", "DO PRZYPISANIA"])
-    
-    def wyswietl_notatki(data_frame):
-        if wybrana_grupa != "WSZYSTKIE":
-            data_frame = data_frame[data_frame["Grupa"] == wybrana_grupa]
-        for _, r in data_frame.iloc[::-1].iterrows():
-            st.markdown(f"""
-            <div style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 10px; background-color: white;">
-                <h4 style="margin:0; color:#007bff;">{r['Grupa']} | {r['Tytul']}</h4>
-                <small style="color:gray;">{r['Data']}</small>
-                <p style="margin-top:10px; font-size:1.1em;">{r['Tresc']}</p>
-            </div>
-            """, unsafe_allow_html=True)
-
-    with t1:
-        wyswietl_notatki(df_notes[df_notes["Autor"] == user])
-    with t2:
-        other = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
-        wyswietl_notatki(df_notes[df_notes["Autor"] == other])
-    with t3:
-        wyswietl_notatki(df_notes[df_notes["Autor"] == "DO USTALENIA"])
-
-# --- MODUŁ 3: LISTA ZADAŃ ---
-elif menu == "Lista zadań":
-    st.header("✅ Szybka lista zadań")
-    try:
-        df_tasks = conn.read(worksheet="zadania", ttl=0)
-    except Exception:
-        df_tasks = pd.DataFrame(columns=["Zadanie", "Priorytet", "Status"])
-
-    with st.form("task_form", clear_on_submit=True):
-        col1, col2, col3 = st.columns([3, 1, 1])
-        t_name = col1.text_input("Zadanie")
-        t_prio = col2.selectbox("Priorytet", ["Wysoki", "Średni", "Niski"])
-        t_stat = col3.selectbox("Status", ["Do zrobienia", "W toku", "Gotowe"])
-        if st.form_submit_button("Dodaj"):
-            new_task = pd.DataFrame([{"Zadanie": t_name, "Priorytet": t_prio, "Status": t_stat}])
-            conn.update(worksheet="zadania", data=pd.concat([df_tasks, new_task], ignore_index=True))
-            st.rerun()
-
-    st.dataframe(df_tasks, use_container_width=True, hide_index=True)
+    tab1, tab2, tab3 = st.tabs(["MOJE", "PARTNERA", "OGÓLNE"])
+    with tab1:
+        for _, r in df_notes[df_notes["Autor"] == user].iloc[::-1].iterrows():
+            st.info(f"**{r['Grupa']}** | {r['Tytul']}\n\n{r['Tresc']}")
+    with tab2:
+        other_u = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
+        for _, r in df_notes[df_notes["Autor"] == other_u].iloc[::-1].iterrows():
+            st.warning(f"**{r['Grupa']}** | {r['Tytul']}\n\n{r['Tresc']}")
+    with tab3:
+        for _, r in df_notes[df_notes["Autor"] == "DO USTALENIA"].iloc[::-1].iterrows():
+            st.error(f"**{r['Grupa']}** | {r['Tytul']}\n\n{r['Tresc']}")
