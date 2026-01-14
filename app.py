@@ -23,112 +23,125 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. BAZA STAWEK 2026 ---
-EXP_RATES = {
-    "WŁASNY SQM BUS": {"Amsterdam":373.8,"Barcelona":1106.4,"Bazylea":481.2,"Berlin":129,"Bruksela":415.2,"Budapeszt":324.6,"Cannes / Nicea":826.8,"Frankfurt nad Menem":331.8,"Gdańsk":162.6,"Genewa":648.6,"Hamburg":238.2,"Hannover":226.2,"Kielce":187.8,"Kolonia / Dusseldorf":359.4,"Kopenhaga":273.6,"Lipsk":186,"Liverpool":725.4,"Lizbona":1585.8,"Londyn":352.8,"Lyon":707.4,"Madryt":1382.4,"Manchester":717,"Mediolan":633.6,"Monachium":347.4,"Norymberga":285.6,"Paryż":577.8,"Praga":180.6,"Rzym":846.6,"Sewilla":988.2,"Sofia":704.4,"Sztokholm":668.4,"Tuluza":1000.2,"Warszawa":169.2,"Wiedeń":285.6},
-    "WŁASNY SQM SOLO": {"Amsterdam":650,"Barcelona":1650,"Bazylea":850,"Berlin":220,"Bruksela":750,"Budapeszt":550,"Cannes / Nicea":1400,"Frankfurt nad Menem":600,"Gdańsk":250,"Genewa":1200,"Hamburg":450,"Hannover":400,"Kielce":280,"Kolonia / Dusseldorf":650,"Kopenhaga":500,"Lipsk":350,"Liverpool":1100,"Lizbona":2100,"Londyn":750,"Lyon":1100,"Madryt":1950,"Manchester":1100,"Mediolan":1100,"Monachium":650,"Norymberga":500,"Paryż":950,"Praga":300,"Rzym":1500,"Sewilla":1600,"Sofia":1100,"Sztokholm":900,"Tuluza":1400,"Warszawa":280,"Wiedeń":550},
-    "WŁASNY SQM FTL": {"Amsterdam":874.8,"Barcelona":2156.4,"Bazylea":1148.4,"Berlin":277.2,"Bruksela":1009.2,"Budapeszt":639.6,"Cannes / Nicea":1895.4,"Frankfurt nad Menem":819.6,"Gdańsk":310.8,"Genewa":1908,"Hamburg":571.2,"Hannover":540,"Kielce":355.8,"Kolonia / Dusseldorf":877.2,"Kopenhaga":636.6,"Lipsk":435.6,"Liverpool":1540.2,"Lizbona":2920.8,"Londyn":924,"Lyon":1524,"Madryt":2565,"Manchester":1524.6,"Mediolan":1542.6,"Monachium":862.2,"Norymberga":700.8,"Paryż":1292.4,"Praga":351,"Rzym":1812,"Sewilla":1869,"Sofia":1502.4,"Sztokholm":723,"Tuluza":1956.6,"Warszawa":313.8,"Wiedeń":478.2}
-}
-RATES_META = {
-    "WŁASNY SQM BUS": {"postoj": 30, "cap": 1000},
-    "WŁASNY SQM SOLO": {"postoj": 100, "cap": 5500},
-    "WŁASNY SQM FTL": {"postoj": 150, "cap": 10500}
-}
-
-# --- 3. POŁĄCZENIE I LOGOWANIE ---
+# --- 2. POŁĄCZENIE I LOGOWANIE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 st.sidebar.markdown("<h2 style='text-align: center;'>REJESTR SZTABOWY</h2>", unsafe_allow_html=True)
 user = st.sidebar.selectbox("👤 IDENTYFIKACJA:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
 user_pins = {"DUKIEL": "9607", "KACZMAREK": "1225"}
+
 is_authenticated = False
 if user != "Wybierz...":
     input_pin = st.sidebar.text_input("PIN:", type="password")
     if input_pin == user_pins.get(user): is_authenticated = True
+
 if not is_authenticated: st.stop()
 
-# --- 4. POBIERANIE DANYCH ---
+# --- 3. POBIERANIE DANYCH ---
 try:
-    df_all = conn.read(worksheet="targi", ttl=5).dropna(subset=["Nazwa Targów"])
-    df_notes = conn.read(worksheet="ogloszenia", ttl=5).dropna(how='all')
+    # Pobieranie zadań
+    df_notes = conn.read(worksheet="ogloszenia", ttl=2).dropna(how='all')
+    
+    # KLUCZOWA NAPRAWA: Konwersja daty na datetime i wypełnienie braków
     df_notes["Data"] = pd.to_datetime(df_notes["Data"], errors='coerce')
+    df_notes["Data"] = df_notes["Data"].fillna(datetime.now())
+    
+    # Upewnienie się, że kolumny tekstowe są tekstami
+    for col in ["Tytul", "Tresc", "Autor", "Status"]:
+        if col in df_notes.columns:
+            df_notes[col] = df_notes[col].astype(str).replace("nan", "")
+            
     df_notes = df_notes.sort_values(by="Data", ascending=False)
-except Exception:
-    st.error("Błąd bazy.")
+    
+    # Pobieranie targów (do innych modułów)
+    df_all = conn.read(worksheet="targi", ttl=5).dropna(subset=["Nazwa Targów"])
+except Exception as e:
+    st.error(f"Błąd bazy: {e}")
     st.stop()
 
 menu = st.sidebar.radio("PROTOKÓŁ:", ["🏠 DZIENNIK OPERACJI", "📅 KALENDARZ", "📊 WYKRES GANTA", "📋 TABLICA ROZKAZÓW"])
 
-# --- MODUŁY WIDOKU ---
-if menu == "🏠 DZIENNIK OPERACJI":
-    st.title("📑 Bieżący Dziennik Transportów")
-    active_df = df_all[df_all["Status"] != "WRÓCIŁO"].copy()
-    my_tasks = active_df[active_df["Logistyk"] == user].copy()
-    edited_my = st.data_editor(my_tasks, use_container_width=True, hide_index=True, key="editor_ops")
-    if st.button("💾 ZAPISZ DZIENNIK"):
-        others = df_all[~df_all.index.isin(my_tasks.index)].copy()
-        conn.update(worksheet="targi", data=pd.concat([edited_my, others], ignore_index=True))
-        st.cache_data.clear()
-        st.rerun()
-
-elif menu == "📋 TABLICA ROZKAZÓW":
+# --- MODUŁ 4: TABLICA ROZKAZÓW (NAPRAWIONA) ---
+if menu == "📋 TABLICA ROZKAZÓW":
     st.title("📋 Meldunki i Rozkazy")
     
-    # Podgląd kart
+    # Widok kart (tylko do odczytu)
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("### 🔴 DO ZAŁATWIENIA")
-        for _, t in df_notes[df_notes["Status"] == "DO ZROBIENIA"].iterrows():
-            st.markdown(f"<div class='task-card'><b>{t.get('Tytul', '---')}</b><br><small>{t.get('Autor','')} | {t['Data'].strftime('%d.%m %H:%M') if pd.notna(t['Data']) else ''}</small></div>", unsafe_allow_html=True)
+        todo = df_notes[df_notes["Status"] == "DO ZROBIENIA"]
+        for _, t in todo.iterrows():
+            st.markdown(f"<div class='task-card'><b>{t['Tytul']}</b><br><small>{t['Autor']} | {t['Data'].strftime('%d.%m %H:%M')}</small></div>", unsafe_allow_html=True)
     with c2:
         st.markdown("### 🟡 W REALIZACJI")
-        for _, t in df_notes[df_notes["Status"] == "W TRAKCIE"].iterrows():
-            st.markdown(f"<div class='task-card' style='border-left-color: #fbc02d'><b>{t.get('Tytul', '---')}</b><br><small>{t.get('Autor','')} | {t['Data'].strftime('%d.%m %H:%M') if pd.notna(t['Data']) else ''}</small></div>", unsafe_allow_html=True)
+        doing = df_notes[df_notes["Status"] == "W TRAKCIE"]
+        for _, t in doing.iterrows():
+            st.markdown(f"<div class='task-card' style='border-left-color: #fbc02d'><b>{t['Tytul']}</b><br><small>{t['Autor']} | {t['Data'].strftime('%d.%m %H:%M')}</small></div>", unsafe_allow_html=True)
 
     st.markdown("---")
     st.subheader("🖋️ Zarządzanie Zadaniami")
     
-    # Kluczowa zmiana: Widzimy TYLKO swoje zadania do edycji, ale kolumny są odblokowane
+    # Filtrujemy notatki użytkownika
     my_notes = df_notes[df_notes["Autor"] == user].copy()
     
-    # Dodajemy pusty wiersz na początku, jeśli chcemy ułatwić start, 
-    # ale num_rows="dynamic" sam w sobie pozwala na dodawanie na dole.
-    
+    # Edytor danych z uproszczoną konfiguracją, aby uniknąć StreamlitAPIException
     edited_n = st.data_editor(
         my_notes, 
         use_container_width=True, 
         hide_index=True, 
         num_rows="dynamic",
         column_config={
-            "Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"], default="DO ZROBIENIA"),
-            "Data": st.column_config.TextColumn("Data", help="Zostanie uzupełniona automatycznie"),
-            "Autor": st.column_config.TextColumn("Autor", help="Zostanie uzupełniony automatycznie"),
-            "Tytul": st.column_config.TextColumn("Tytuł"),
-            "Tresc": st.column_config.TextColumn("Treść")
+            "Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"]),
+            "Data": st.column_config.DatetimeColumn("Data", disabled=True, format="D MMM YYYY, HH:mm"),
+            "Autor": st.column_config.TextColumn("Autor", disabled=True),
+            "Tytul": st.column_config.TextColumn("Tytuł", placeholder="Wpisz tytuł..."),
+            "Tresc": st.column_config.TextColumn("Treść", placeholder="Opis zadania...")
         },
         key="editor_notes"
     )
     
     if st.button("💾 ZAKTUALIZUJ TABLICĘ"):
-        # Przetwarzamy to co wyszło z edytora
-        new_data = edited_n.copy()
+        # Przygotowanie danych do zapisu
+        new_entries = edited_n.copy()
         
-        # WYMUSZENIE danych dla nowych/edytowanych linii
-        new_data["Autor"] = user
-        # Dla bezpieczeństwa wypełniamy brakujące daty teraz
-        new_data["Data"] = pd.to_datetime(new_data["Data"]).fillna(datetime.now())
+        # Wymuszenie Autora i Daty dla nowych wierszy
+        new_entries["Autor"] = user
+        new_entries["Data"] = new_entries["Data"].fillna(datetime.now())
         
-        # Łączymy z zadaniami drugiego logistyka (żeby ich nie usunąć!)
+        # Połączenie z zadaniami innych osób
         others_n = df_notes[df_notes["Autor"] != user].copy()
-        final_notes = pd.concat([new_data, others_n], ignore_index=True)
+        final_df = pd.concat([new_entries, others_n], ignore_index=True)
         
-        # Usuwamy bardzo stare wykonane (archiwum 90 dni)
-        limit_date = datetime.now() - timedelta(days=90)
-        final_notes = final_notes[~((final_notes["Status"] == "WYKONANE") & (final_notes["Data"] < limit_date))].copy()
+        # Archiwizacja starych zadań (90 dni)
+        limit = datetime.now() - timedelta(days=90)
+        final_df = final_df[~((final_df["Status"] == "WYKONANE") & (final_df["Data"] < limit))]
         
-        # Formatowanie do bazy
-        final_notes["Data"] = final_notes["Data"].dt.strftime('%Y-%m-%d %H:%M:%S')
+        # Konwersja na tekst przed wysyłką do GSheets
+        final_df["Data"] = final_df["Data"].dt.strftime('%Y-%m-%d %H:%M:%S')
         
-        conn.update(worksheet="ogloszenia", data=final_notes)
+        conn.update(worksheet="ogloszenia", data=final_df)
         st.cache_data.clear()
-        st.success("Zmiany zapisane pomyślnie.")
+        st.success("Baza zaktualizowana.")
         st.rerun()
+
+# --- POZOSTAŁE MODUŁY (DLA KOMPLETNOŚCI KODU) ---
+elif menu == "🏠 DZIENNIK OPERACJI":
+    st.title("📑 Bieżący Dziennik Transportów")
+    active_df = df_all[df_all["Status"] != "WRÓCIŁO"].copy()
+    my_tasks = active_df[active_df["Logistyk"] == user].copy()
+    edited_my = st.data_editor(my_tasks, use_container_width=True, hide_index=True)
+    if st.button("💾 ZAPISZ DZIENNIK"):
+        others = df_all[~df_all.index.isin(my_tasks.index)].copy()
+        conn.update(worksheet="targi", data=pd.concat([edited_my, others], ignore_index=True))
+        st.cache_data.clear()
+        st.rerun()
+
+elif menu == "📅 KALENDARZ":
+    st.title("📅 Grafik Wyjazdów")
+    events = [{"title": f"[{r['Logistyk']}] {r['Nazwa Targów']}", "start": str(r["Pierwszy wyjazd"]), "end": str(r["Data końca"])} for _, r in df_all.iterrows()]
+    calendar(events=events)
+
+elif menu == "📊 WYKRES GANTA":
+    st.title("📊 Harmonogram Operacyjny")
+    if not df_all.empty:
+        fig = px.timeline(df_all, x_start="Pierwszy wyjazd", x_end="Data końca", y="Nazwa Targów", color="Logistyk")
+        st.plotly_chart(fig, use_container_width=True)
