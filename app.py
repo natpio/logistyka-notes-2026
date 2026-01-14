@@ -5,114 +5,100 @@ import plotly.express as px
 from streamlit_calendar import calendar
 from datetime import datetime, timedelta
 
-# --- 1. KONFIGURACJA WIZUALNA: TOTALNY PRL WOJSKOWY / BUNKIER ---
-st.set_page_config(page_title="CENTRALA LOGISTYKI SQM - TAJNE", layout="wide", initial_sidebar_state="expanded")
+# --- 1. KONFIGURACJA WIZUALNA: STARE AKTA I MASZYNA DO PISANIA ---
+st.set_page_config(page_title="ARCHIWUM LOGISTYKI SQM", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Special+Elite&display=swap');
     
-    /* Efekt starego monitora CRT */
+    /* Tło starej teczki papierowej */
     .stApp { 
-        background-color: #2b2f11; /* Ciemna oliwka */
-        font-family: 'Share Tech Mono', monospace; 
-        color: #00ff41; /* Zielony fosforowy terminal */
-        background-image: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
-        background-size: 100% 4px, 3px 100%;
+        background-color: #d2b48c; /* Tan / Manila folder */
+        background-image: url("https://www.transparenttextures.com/patterns/cardboard-flat.png");
+        font-family: 'Special Elite', cursive; 
+        color: #2b2b2b;
     }
     
-    /* Sidebar - Panel oficera politycznego */
+    /* Panel boczny - ciemniejszy karton */
     [data-testid="stSidebar"] { 
-        background-color: #1a1c0a; 
-        border-right: 5px double #00ff41; 
+        background-color: #bc9e82; 
+        border-right: 3px solid #5d4037; 
     }
     
-    /* Betonowe kontenery */
+    /* Kontenery jak przyklejone kartki papieru */
     div[data-testid="stMetric"], .element-container {
-        background-color: #3e441c; 
-        border: 3px solid #00ff41;
-        box-shadow: 8px 8px 0px #000;
+        background-color: #f4ecd8; 
+        border: 1px solid #bcaaa4;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
         padding: 15px;
+        transform: rotate(-0.5deg); /* Lekki skos dla efektu ręcznego ułożenia */
     }
     
-    /* Przyciski - "ZATWIERDZONE PRZEZ CENZURĘ" */
+    /* Przycisk jako czerwona pieczątka urzędowa */
     .stButton>button {
-        background-color: #8b0000; /* Czerwień partyjna */
-        color: #ffffff;
+        background-color: transparent; 
+        color: #a00000; 
+        border: 3px solid #a00000;
         border-radius: 0px;
-        border: 4px outset #ff0000;
-        font-weight: 900;
+        font-family: 'Special Elite', cursive;
+        font-size: 1.2rem;
+        font-weight: bold;
         text-transform: uppercase;
-        letter-spacing: 3px;
-        width: 100%;
+        padding: 10px;
+        box-shadow: 2px 2px 0px #a00000;
     }
     .stButton>button:hover {
-        background-color: #ff0000;
-        border: 4px inset #8b0000;
-        color: #000;
-    }
-    
-    /* Karty zadań - jak teczki z IPN */
-    .task-card {
-        background: #c2b280; /* Kolor starego papieru/teczki */
-        padding: 15px;
-        border: 2px solid #555; 
-        margin-bottom: 12px;
-        border-left: 15px solid #8b0000;
-        box-shadow: 5px 5px 0px #1a1c0a;
-        color: #000;
-    }
-    
-    /* Rekomendacje - Depesza z KC */
-    .recommendation-box {
-        background-color: #000; 
-        color: #00ff41; 
-        padding: 20px;
-        border: 2px dashed #00ff41;
-        line-height: 1.6; 
-        margin-bottom: 25px;
-        border-radius: 0px;
-        position: relative;
-    }
-    .recommendation-box::before {
-        content: "TAJNE SPEC. ZNACZENIA";
-        position: absolute;
-        top: -12px;
-        left: 10px;
-        background: #8b0000;
+        background-color: #a00000;
         color: white;
-        padding: 2px 10px;
-        font-size: 0.7rem;
+    }
+    
+    /* Karty zadań - fiszki z kartoteki */
+    .task-card {
+        background: #fff; 
+        padding: 15px;
+        border: 1px solid #999; 
+        margin-bottom: 12px;
+        border-top: 5px solid #5d4037;
+        box-shadow: 3px 3px 0px rgba(0,0,0,0.1);
+        color: #1a1a1a;
+    }
+    
+    /* Rekomendacje - Notatka służbowa na żółtym papierze */
+    .recommendation-box {
+        background-color: #fffde7; 
+        color: #333; 
+        padding: 20px;
+        border-left: 10px solid #fbc02d;
+        border-bottom: 1px solid #ddd;
+        line-height: 1.5; 
+        margin-bottom: 25px;
     }
 
-    /* Alerty - Czerwony Telefon */
+    /* Alerty - Czerwona parafa */
     .uk-alert {
-        color: #ffffff; 
-        background-color: #b71c1c; 
-        padding: 12px;
-        border: 2px solid #fff;
-        text-transform: uppercase;
+        color: #b71c1c; 
+        background-color: rgba(255,0,0,0.1);
+        padding: 10px;
+        border: 2px dashed #b71c1c;
+        margin-top: 10px;
         font-weight: bold;
-        animation: blinker 1.5s linear infinite;
     }
-    @keyframes blinker { 50% { opacity: 0; } }
 
     h1, h2, h3 {
-        text-shadow: 2px 2px #000;
-        text-transform: uppercase;
-        border-bottom: 2px solid #00ff41;
+        color: #3e2723;
+        text-decoration: underline;
     }
 
-    /* Inputy - jak stare maszyny do pisania */
-    input, select, textarea {
-        background-color: #000 !important;
-        color: #00ff41 !important;
-        border: 1px solid #00ff41 !important;
+    /* Stylizacja tabel i edytorów */
+    .stDataEditor {
+        background-color: white !important;
+        border: 1px solid #3e2723 !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. BAZA STAWEK (CENNIK 2026 - LOGIKA NIENARUSZONA) ---
+# --- 2. BAZA STAWEK (CENNIK 2026 - PEŁNA LISTA) ---
 EXP_RATES = {
     "WŁASNY SQM BUS": {"Amsterdam":373.8,"Barcelona":1106.4,"Bazylea":481.2,"Berlin":129,"Bruksela":415.2,"Budapeszt":324.6,"Cannes / Nicea":826.8,"Frankfurt nad Menem":331.8,"Gdańsk":162.6,"Genewa":648.6,"Hamburg":238.2,"Hannover":226.2,"Kielce":187.8,"Kolonia / Dusseldorf":359.4,"Kopenhaga":273.6,"Lipsk":186,"Liverpool":725.4,"Lizbona":1585.8,"Londyn":352.8,"Lyon":707.4,"Madryt":1382.4,"Manchester":717,"Mediolan":633.6,"Monachium":347.4,"Norymberga":285.6,"Paryż":577.8,"Praga":180.6,"Rzym":846.6,"Sewilla":988.2,"Sofia":704.4,"Sztokholm":668.4,"Tuluza":1000.2,"Warszawa":169.2,"Wiedeń":285.6},
     "WŁASNY SQM SOLO": {"Amsterdam":650,"Barcelona":1650,"Bazylea":850,"Berlin":220,"Bruksela":750,"Budapeszt":550,"Cannes / Nicea":1400,"Frankfurt nad Menem":600,"Gdańsk":250,"Genewa":1200,"Hamburg":450,"Hannover":400,"Kielce":280,"Kolonia / Dusseldorf":650,"Kopenhaga":500,"Lipsk":350,"Liverpool":1100,"Lizbona":2100,"Londyn":750,"Lyon":1100,"Madryt":1950,"Manchester":1100,"Mediolan":1100,"Monachium":650,"Norymberga":500,"Paryż":950,"Praga":300,"Rzym":1500,"Sewilla":1600,"Sofia":1100,"Sztokholm":900,"Tuluza":1400,"Warszawa":280,"Wiedeń":550},
@@ -151,25 +137,25 @@ def calculate_logistics(city, start_date, end_date, weight):
         results.append({"name": name, "cost": total, "uk_info": uk_details})
     return sorted(results, key=lambda x: x["cost"])[0] if results else None
 
-# --- 3. POŁĄCZENIE I LOGOWANIE (SYSTEM SZYFROWY) ---
+# --- 3. POŁĄCZENIE I LOGOWANIE (IDENTYFIKACJA OSOBISTA) ---
 conn = st.connection("gsheets", type=GSheetsConnection)
-st.sidebar.markdown("<h1 style='text-align: center; color: #ff0000;'>RESORT LOGISTYKI</h1>", unsafe_allow_html=True)
-user = st.sidebar.selectbox("👤 IDENTYFIKACJA OFICERA:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
+st.sidebar.markdown("<h2 style='text-align: center; color: #3e2723;'>🗃️ SKŁADNICA AKT</h2>", unsafe_allow_html=True)
+user = st.sidebar.selectbox("👤 URZĘDNIK:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
 user_pins = {"DUKIEL": "9607", "KACZMAREK": "1225"}
 
 is_authenticated = False
 if user != "Wybierz...":
-    input_pin = st.sidebar.text_input("KOD KRYPTOGRAFICZNY:", type="password")
+    input_pin = st.sidebar.text_input("HASŁO (PIN):", type="password")
     if input_pin == user_pins.get(user):
         is_authenticated = True
     elif input_pin:
-        st.sidebar.error("🚨 NARUSZENIE PROTOKOŁU - BŁĘDNY KOD")
+        st.sidebar.error("❌ BŁĘDNE HASŁO!")
 
 if not is_authenticated:
-    st.warning("SYSTEM ZABLOKOWANY. CZEKAM NA KOD DOSTĘPU Z NACZELNEGO DOWÓDZTWA.")
+    st.info("Proszę podać hasło, aby otworzyć teczkę z aktami.")
     st.stop()
 
-# --- 4. POBIERANIE DANYCH (ŁĄCZNOŚĆ RADIOWA) ---
+# --- 4. POBIERANIE DANYCH ---
 try:
     df_all = conn.read(worksheet="targi", ttl=300).dropna(subset=["Nazwa Targów"])
     df_all["Pierwszy wyjazd"] = pd.to_datetime(df_all["Pierwszy wyjazd"], errors='coerce')
@@ -179,31 +165,31 @@ try:
     df_notes["Data"] = pd.to_datetime(df_notes["Data"], errors='coerce')
     df_notes["Autor"] = df_notes["Autor"].astype(str).str.upper()
 except Exception:
-    st.error("BŁĄD ŁĄCZNOŚCI Z CENTRALĄ. SPRAWDŹ ANTENĘ (GSheets).")
+    st.error("Błąd odczytu ksiąg wieczystych (GSheets).")
     st.stop()
 
-# --- 5. MENU (DYREKTYWY) ---
-menu = st.sidebar.radio("PROTOKOŁY:", ["🏠 SZTAB OPERACYJNY", "📅 HARMONOGRAM MOBILIZACJI", "📊 STATYSTYKI GOTOWOŚCI", "📋 TABLICA ROZKAZÓW"])
+# --- 5. MENU (REJESTRY) ---
+menu = st.sidebar.radio("WYBIERZ REJESTR:", ["📑 DZIENNIK PODCZYWCZY", "📅 KALENDARIUM WYJAZDÓW", "📊 WYKRESY ZASOBÓW", "📋 KARTOTEKA ZADAŃ"])
 
-# --- MODUŁ 1: SZTAB OPERACYJNY ---
-if menu == "🏠 SZTAB OPERACYJNY":
-    st.title("📟 GŁÓWNY TERMINAL SZTABOWY")
+# --- MODUŁ 1: DZIENNIK ---
+if menu == "📑 DZIENNIK PODCZYWCZY":
+    st.title("📑 Bieżący Rejestr Transportów")
     
-    # KALKULATOR (NORMY ZAOPATRZENIA)
-    with st.expander("🧮 KALKULATOR DEWIZOWY (NORMY 2026)", expanded=True):
+    # KALKULATOR (NOTATKA SŁUŻBOWA)
+    with st.expander("🧮 Obliczanie Norm Transportowych", expanded=True):
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
-        t_city = c1.selectbox("CEL OPERACJI (MIASTO):", sorted(list(EXP_RATES["WŁASNY SQM BUS"].keys())))
-        t_weight = c2.number_input("MASA ŁADUNKU (KG):", min_value=0, value=500, step=100)
-        t_start = c3.date_input("START OPERACJI:", datetime.now())
-        t_end = c4.date_input("POWRÓT DO BAZY:", datetime.now() + timedelta(days=4))
+        t_city = c1.selectbox("Kierunek docelowy:", sorted(list(EXP_RATES["WŁASNY SQM BUS"].keys())))
+        t_weight = c2.number_input("Waga ładunku (kg):", min_value=0, value=500, step=100)
+        t_start = c3.date_input("Data wyjazdu:", datetime.now())
+        t_end = c4.date_input("Data powrotu:", datetime.now() + timedelta(days=4))
         
         calc = calculate_logistics(t_city, pd.to_datetime(t_start), pd.to_datetime(t_end), t_weight)
         if calc:
             st.markdown(f"""
             <div class="recommendation-box">
-                <b>DYREKTYWA TRANSPORTOWA:</b> {calc['name']}<br>
-                <b>BUDŻET OPERACYJNY:</b> <span style="font-size: 1.5rem; color: #fff;">€ {calc['cost']:.2f} NETTO</span>
-                {f'<div class="uk-alert">🚨 UWAGA: STREFA WROGA (UK). OPŁATY DODATKOWE:<br>{calc["uk_info"]}</div>' if calc["uk_info"] else ""}
+                <b>NOTATKA SŁUŻBOWA:</b> Wykryto optymalny środek transportu: <u>{calc['name']}</u><br>
+                <b>KOSZT NETTO:</b> <span style="font-size: 1.3rem;">€ {calc['cost']:.2f}</span>
+                {f'<div class="uk-alert">⚠ UWAGA! OPŁATY NADZWYCZAJNE (UK):<br>{calc["uk_info"]}</div>' if calc["uk_info"] else ""}
             </div>
             """, unsafe_allow_html=True)
 
@@ -212,21 +198,20 @@ if menu == "🏠 SZTAB OPERACYJNY":
     active_df = df_all[active_mask].copy()
     archived_df = df_all[~active_mask].copy()
 
-    # EDYCJA WŁASNYCH ZADAŃ
-    st.subheader(f"🖋️ TWOJA KARTA SŁUŻBOWA (OFICER: {user})")
+    st.subheader(f"✍️ Rejestr Osobisty Urzędnika: {user}")
     my_tasks = active_df[active_df["Logistyk"] == user].copy()
     
     col_config = {
-        "Status": st.column_config.SelectboxColumn("STATUS", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"], required=True),
-        "Logistyk": st.column_config.SelectboxColumn("ODPOWIEDZIALNY", options=["DUKIEL", "KACZMAREK"], required=True),
-        "Sloty": st.column_config.SelectboxColumn("PRZYDZIAŁ SLOTU", options=["TAK", "NIE", "NIE POTRZEBA"]),
-        "Pierwszy wyjazd": st.column_config.DateColumn("DATA STARTU"),
-        "Data końca": st.column_config.DateColumn("DATA KONCA")
+        "Status": st.column_config.SelectboxColumn("Status", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"], required=True),
+        "Logistyk": st.column_config.SelectboxColumn("Logistyk", options=["DUKIEL", "KACZMAREK"], required=True),
+        "Sloty": st.column_config.SelectboxColumn("Sloty", options=["TAK", "NIE", "NIE POTRZEBA"]),
+        "Pierwszy wyjazd": st.column_config.DateColumn("Wyjazd"),
+        "Data końca": st.column_config.DateColumn("Powrót")
     }
     
     edited_my = st.data_editor(my_tasks, use_container_width=True, hide_index=True, column_config=col_config, key="editor_ops")
 
-    if st.button("💾 NADALJ RAPORT DO CENTRALNEGO KOMITETU"):
+    if st.button("💾 ZATWIERDŹ I OPISZ AKTA"):
         others = df_all[~df_all.index.isin(my_tasks.index)].copy()
         for df in [edited_my, others]:
             df["Pierwszy wyjazd"] = pd.to_datetime(df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d').fillna('')
@@ -235,69 +220,68 @@ if menu == "🏠 SZTAB OPERACYJNY":
         final_df = pd.concat([edited_my, others], ignore_index=True)
         conn.update(worksheet="targi", data=final_df)
         st.cache_data.clear()
-        st.success("RAPORT PRZYJĘTY. DZIĘKUJEMY ZA SŁUŻBĘ!")
+        st.success("Akta zostały zaktualizowane pomyślnie.")
         st.rerun()
 
     st.markdown("---")
     partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
-    st.subheader(f"👁️ MONITOROWANIE SEKRETNE SĄSIEDNIEGO OFICERA ({partner})")
+    st.subheader(f"👁️ Podgląd Akt Współpracownika ({partner})")
     partner_tasks = active_df[active_df["Logistyk"] == partner].copy()
     st.dataframe(partner_tasks, use_container_width=True, hide_index=True)
 
-    with st.expander("📁 ARCHIWUM PAŃSTWOWE (ZREALIZOWANE)"):
+    with st.expander("📁 Archiwum Akt Zakończonych"):
         st.dataframe(archived_df, use_container_width=True, hide_index=True)
 
-# --- MODUŁ 2: HARMONOGRAM ---
-elif menu == "📅 HARMONOGRAM MOBILIZACJI":
-    st.title("📅 PLAN RUCHÓW WOJSKOWYCH")
+# --- MODUŁ 2: KALENDARZ ---
+elif menu == "📅 KALENDARIUM WYJAZDÓW":
+    st.title("📅 Harmonogram Ruchu Pojazdów")
     events = []
     for _, r in df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna())].iterrows():
-        color = "#8b0000" if r["Logistyk"] == "DUKIEL" else "#2b2f11"
+        color = "#5d4037" if r["Logistyk"] == "DUKIEL" else "#8d6e63"
         events.append({
             "title": f"[{r['Logistyk']}] {r['Nazwa Targów']}",
             "start": r["Pierwszy wyjazd"].strftime("%Y-%m-%d"),
             "end": (r["Data końca"] + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
-            "backgroundColor": color,
-            "borderColor": "#00ff41"
+            "backgroundColor": color
         })
     calendar(events=events, options={"locale": "pl", "firstDay": 1})
 
-# --- MODUŁ 3: STATYSTYKI ---
-elif menu == "📊 STATYSTYKI GOTOWOŚCI":
-    st.title("📊 WYKRESY OBCIĄŻENIA SOCJALISTYCZNEGO")
+# --- MODUŁ 3: GANTT ---
+elif menu == "📊 WYKRESY ZASOBÓW":
+    st.title("📊 Wykorzystanie Floty i Czasu")
     df_viz = df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna()) & (df_all["Data końca"].notna())].copy()
     if not df_viz.empty:
         fig = px.timeline(df_viz, x_start="Pierwszy wyjazd", x_end="Data końca", y="Nazwa Targów", 
-                          color="Logistyk", color_discrete_map={"DUKIEL": "#ff0000", "KACZMAREK": "#00ff41"},
-                          template="plotly_dark")
-        fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font_color="#00ff41")
+                          color="Logistyk", color_discrete_map={"DUKIEL": "#5d4037", "KACZMAREK": "#8d6e63"},
+                          template="simple_white")
+        fig.update_layout(paper_bgcolor="#f4ecd8", plot_bgcolor="#fff", font_family="Special Elite")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("BRAK DANYCH DO ANALIZY WYWIADOWCZEJ.")
+        st.info("Brak aktywnych transportów do wygenerowania wykresu.")
 
-# --- MODUŁ 4: TABLICA ROZKAZÓW ---
-elif menu == "📋 TABLICA ROZKAZÓW":
-    st.title("📋 ROZKAZY DZIENNE I CZYNY SPOŁECZNE")
+# --- MODUŁ 4: TABLICA ZADAŃ ---
+elif menu == "📋 KARTOTEKA ZADAŃ":
+    st.title("📋 Zadania do Wykonania i Notatki")
     limit_date = datetime.now() - timedelta(days=90)
     
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("### 🚨 ROZKAZY PILNE")
+        st.markdown("### 🔴 DO ZAŁATWIENIA")
         for _, t in df_notes[df_notes["Status"] == "DO ZROBIENIA"].iterrows():
-            st.markdown(f"<div class='task-card'><b>{t.get('Tytul', 'ROZKAZ')}</b><br><small>NADAWCA: {t['Autor']}</small></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='task-card'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>Zgłosił: {t['Autor']}</small></div>", unsafe_allow_html=True)
     with c2:
-        st.markdown("### 🛠️ W REALIZACJI")
+        st.markdown("### 🟡 W TOKU")
         for _, t in df_notes[df_notes["Status"] == "W TRAKCIE"].iterrows():
-            st.markdown(f"<div class='task-card' style='border-left-color: #ffd700'><b>{t.get('Tytul', 'ROZKAZ')}</b><br><small>NADAWCA: {t['Autor']}</small></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='task-card' style='border-top-color: #fbc02d'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>Zgłosił: {t['Autor']}</small></div>", unsafe_allow_html=True)
 
     st.markdown("---")
-    st.subheader("🖋️ DZIENNIK RAPORTÓW OSOBISTYCH")
+    st.subheader("🖋️ Osobista Karta Zadań")
     my_notes = df_notes[df_notes["Autor"] == user].copy()
     
     edited_n = st.data_editor(my_notes, use_container_width=True, hide_index=True, num_rows="dynamic",
-                              column_config={"Status": st.column_config.SelectboxColumn("STATUS", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"], required=True)})
+                              column_config={"Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"], required=True)})
     
-    if st.button("💾 ZAPISZ W DZIENNIKU BOJOWYM"):
+    if st.button("💾 ZAKTUALIZUJ KARTOTEKĘ"):
         new_my = edited_n.copy()
         new_my["Autor"] = user
         new_my.loc[new_my["Status"] == "WYKONANE", "Data"] = new_my["Data"].fillna(datetime.now())
@@ -309,5 +293,5 @@ elif menu == "📋 TABLICA ROZKAZÓW":
         
         conn.update(worksheet="ogloszenia", data=final_notes)
         st.cache_data.clear()
-        st.success("DZIENNIK ZAKTUALIZOWANY. BEZ ODBIORU.")
+        st.success("Kartoteka została przepisana pomyślnie.")
         st.rerun()
