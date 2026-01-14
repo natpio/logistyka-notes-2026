@@ -5,100 +5,111 @@ import plotly.express as px
 from streamlit_calendar import calendar
 from datetime import datetime, timedelta
 
-# --- 1. KONFIGURACJA WIZUALNA: STARE AKTA I MASZYNA DO PISANIA ---
-st.set_page_config(page_title="ARCHIWUM LOGISTYKI SQM", layout="wide", initial_sidebar_state="expanded")
+# --- 1. KONFIGURACJA WIZUALNA: WOJSKOWE AKTA OPERACYJNE ---
+st.set_page_config(page_title="SZTAB LOGISTYKI SQM", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Special+Elite&display=swap');
     
-    /* Tło starej teczki papierowej */
+    /* Tło wojskowe - zielony brezent */
     .stApp { 
-        background-color: #d2b48c; /* Tan / Manila folder */
-        background-image: url("https://www.transparenttextures.com/patterns/cardboard-flat.png");
+        background-color: #4b5320; 
+        background-image: url("https://www.transparenttextures.com/patterns/dark-leather.png");
         font-family: 'Special Elite', cursive; 
-        color: #2b2b2b;
+        color: #f1f1f1;
     }
     
-    /* Panel boczny - ciemniejszy karton */
+    /* Panel boczny - ciemna stal / skrzynia */
     [data-testid="stSidebar"] { 
-        background-color: #bc9e82; 
-        border-right: 3px solid #5d4037; 
+        background-color: #2b2f11; 
+        border-right: 5px solid #1a1c0a; 
     }
     
-    /* Kontenery jak przyklejone kartki papieru */
+    /* Kontenery jak jasne arkusze papieru (akta) */
     div[data-testid="stMetric"], .element-container {
-        background-color: #f4ecd8; 
-        border: 1px solid #bcaaa4;
-        box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+        background-color: #fdf5e6; /* Kolor starego papieru */
+        border: 1px solid #dcdcdc;
+        box-shadow: 4px 4px 10px rgba(0,0,0,0.5);
         padding: 15px;
-        transform: rotate(-0.5deg); /* Lekki skos dla efektu ręcznego ułożenia */
+        color: #2b2b2b !important;
     }
     
-    /* Przycisk jako czerwona pieczątka urzędowa */
+    /* Przyciski jako czerwone pieczątki sztabowe */
     .stButton>button {
-        background-color: transparent; 
-        color: #a00000; 
-        border: 3px solid #a00000;
-        border-radius: 0px;
+        background-color: #fdf5e6; 
+        color: #8b0000; 
+        border: 4px double #8b0000;
+        border-radius: 2px;
         font-family: 'Special Elite', cursive;
-        font-size: 1.2rem;
+        font-size: 1.1rem;
         font-weight: bold;
         text-transform: uppercase;
-        padding: 10px;
-        box-shadow: 2px 2px 0px #a00000;
+        padding: 12px;
+        width: 100%;
+        box-shadow: 2px 2px 0px #000;
     }
     .stButton>button:hover {
-        background-color: #a00000;
-        color: white;
+        background-color: #8b0000;
+        color: #fdf5e6;
+        border: 4px double #fdf5e6;
     }
     
-    /* Karty zadań - fiszki z kartoteki */
+    /* Karty zadań - fiszki meldunkowe */
     .task-card {
-        background: #fff; 
+        background: #ffffff; 
         padding: 15px;
-        border: 1px solid #999; 
+        border: 1px solid #000; 
         margin-bottom: 12px;
-        border-top: 5px solid #5d4037;
-        box-shadow: 3px 3px 0px rgba(0,0,0,0.1);
+        border-left: 10px solid #8b0000;
+        box-shadow: 5px 5px 0px rgba(0,0,0,0.2);
         color: #1a1a1a;
     }
     
-    /* Rekomendacje - Notatka służbowa na żółtym papierze */
+    /* Rekomendacje - żółta kartka z depeszą */
     .recommendation-box {
-        background-color: #fffde7; 
-        color: #333; 
+        background-color: #fff9c4; 
+        color: #2b2b2b; 
         padding: 20px;
-        border-left: 10px solid #fbc02d;
-        border-bottom: 1px solid #ddd;
-        line-height: 1.5; 
+        border: 2px dashed #8b0000;
+        line-height: 1.4; 
         margin-bottom: 25px;
-    }
-
-    /* Alerty - Czerwona parafa */
-    .uk-alert {
-        color: #b71c1c; 
-        background-color: rgba(255,0,0,0.1);
-        padding: 10px;
-        border: 2px dashed #b71c1c;
-        margin-top: 10px;
         font-weight: bold;
     }
 
-    h1, h2, h3 {
-        color: #3e2723;
-        text-decoration: underline;
+    /* Alerty - Rozkaz pilny */
+    .uk-alert {
+        color: #ffffff; 
+        background-color: #d32f2f; 
+        padding: 8px;
+        border: 2px solid #000;
+        text-align: center;
+        margin-top: 10px;
+        font-size: 0.9rem;
     }
 
-    /* Stylizacja tabel i edytorów */
-    .stDataEditor {
-        background-color: white !important;
-        border: 1px solid #3e2723 !important;
+    /* Nagłówki sekcji */
+    h1, h2, h3 {
+        color: #fdf5e6 !important;
+        text-shadow: 2px 2px 4px #000;
+        text-transform: uppercase;
+        border-bottom: 1px solid #fdf5e6;
+    }
+    
+    /* Naprawa kolorów tekstów w arkuszach danych */
+    span, p, label {
+        color: inherit;
+    }
+    
+    /* Selectboxy i inputy */
+    div[data-baseweb="select"] > div {
+        background-color: #fdf5e6 !important;
+        color: #000 !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. BAZA STAWEK (CENNIK 2026 - PEŁNA LISTA) ---
+# --- 2. BAZA STAWEK (CENNIK 2026 - LOGIKA BEZ ZMIAN) ---
 EXP_RATES = {
     "WŁASNY SQM BUS": {"Amsterdam":373.8,"Barcelona":1106.4,"Bazylea":481.2,"Berlin":129,"Bruksela":415.2,"Budapeszt":324.6,"Cannes / Nicea":826.8,"Frankfurt nad Menem":331.8,"Gdańsk":162.6,"Genewa":648.6,"Hamburg":238.2,"Hannover":226.2,"Kielce":187.8,"Kolonia / Dusseldorf":359.4,"Kopenhaga":273.6,"Lipsk":186,"Liverpool":725.4,"Lizbona":1585.8,"Londyn":352.8,"Lyon":707.4,"Madryt":1382.4,"Manchester":717,"Mediolan":633.6,"Monachium":347.4,"Norymberga":285.6,"Paryż":577.8,"Praga":180.6,"Rzym":846.6,"Sewilla":988.2,"Sofia":704.4,"Sztokholm":668.4,"Tuluza":1000.2,"Warszawa":169.2,"Wiedeń":285.6},
     "WŁASNY SQM SOLO": {"Amsterdam":650,"Barcelona":1650,"Bazylea":850,"Berlin":220,"Bruksela":750,"Budapeszt":550,"Cannes / Nicea":1400,"Frankfurt nad Menem":600,"Gdańsk":250,"Genewa":1200,"Hamburg":450,"Hannover":400,"Kielce":280,"Kolonia / Dusseldorf":650,"Kopenhaga":500,"Lipsk":350,"Liverpool":1100,"Lizbona":2100,"Londyn":750,"Lyon":1100,"Madryt":1950,"Manchester":1100,"Mediolan":1100,"Monachium":650,"Norymberga":500,"Paryż":950,"Praga":300,"Rzym":1500,"Sewilla":1600,"Sofia":1100,"Sztokholm":900,"Tuluza":1400,"Warszawa":280,"Wiedeń":550},
@@ -137,9 +148,9 @@ def calculate_logistics(city, start_date, end_date, weight):
         results.append({"name": name, "cost": total, "uk_info": uk_details})
     return sorted(results, key=lambda x: x["cost"])[0] if results else None
 
-# --- 3. POŁĄCZENIE I LOGOWANIE (IDENTYFIKACJA OSOBISTA) ---
+# --- 3. POŁĄCZENIE I LOGOWANIE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
-st.sidebar.markdown("<h2 style='text-align: center; color: #3e2723;'>🗃️ SKŁADNICA AKT</h2>", unsafe_allow_html=True)
+st.sidebar.markdown("<h2 style='text-align: center; color: #fdf5e6;'>🗄️ ARCHIWUM SZTABOWE</h2>", unsafe_allow_html=True)
 user = st.sidebar.selectbox("👤 URZĘDNIK:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
 user_pins = {"DUKIEL": "9607", "KACZMAREK": "1225"}
 
@@ -149,10 +160,10 @@ if user != "Wybierz...":
     if input_pin == user_pins.get(user):
         is_authenticated = True
     elif input_pin:
-        st.sidebar.error("❌ BŁĘDNE HASŁO!")
+        st.sidebar.error("❌ ODMOWA DOSTĘPU!")
 
 if not is_authenticated:
-    st.info("Proszę podać hasło, aby otworzyć teczkę z aktami.")
+    st.info("System oczekuje na autoryzację oficera logistyki.")
     st.stop()
 
 # --- 4. POBIERANIE DANYCH ---
@@ -165,31 +176,30 @@ try:
     df_notes["Data"] = pd.to_datetime(df_notes["Data"], errors='coerce')
     df_notes["Autor"] = df_notes["Autor"].astype(str).str.upper()
 except Exception:
-    st.error("Błąd odczytu ksiąg wieczystych (GSheets).")
+    st.error("Błąd łączności z centralną bazą danych.")
     st.stop()
 
-# --- 5. MENU (REJESTRY) ---
-menu = st.sidebar.radio("WYBIERZ REJESTR:", ["📑 DZIENNIK PODCZYWCZY", "📅 KALENDARIUM WYJAZDÓW", "📊 WYKRESY ZASOBÓW", "📋 KARTOTEKA ZADAŃ"])
+# --- 5. MENU REJESTRÓW ---
+menu = st.sidebar.radio("WYBIERZ AKTA:", ["📑 DZIENNIK OPERACJI", "📅 HARMONOGRAM WYJAZDÓW", "📊 STATYSTYKI FLOTY", "📋 ROZKAZY I NOTATKI"])
 
 # --- MODUŁ 1: DZIENNIK ---
-if menu == "📑 DZIENNIK PODCZYWCZY":
-    st.title("📑 Bieżący Rejestr Transportów")
+if menu == "📑 DZIENNIK OPERACJI":
+    st.title("📑 Bieżący Dziennik Operacji Logistycznych")
     
-    # KALKULATOR (NOTATKA SŁUŻBOWA)
-    with st.expander("🧮 Obliczanie Norm Transportowych", expanded=True):
+    with st.expander("🧮 Obliczanie Kosztów (Normy 2026)", expanded=True):
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
-        t_city = c1.selectbox("Kierunek docelowy:", sorted(list(EXP_RATES["WŁASNY SQM BUS"].keys())))
-        t_weight = c2.number_input("Waga ładunku (kg):", min_value=0, value=500, step=100)
-        t_start = c3.date_input("Data wyjazdu:", datetime.now())
-        t_end = c4.date_input("Data powrotu:", datetime.now() + timedelta(days=4))
+        t_city = c1.selectbox("Cel wyjazdu:", sorted(list(EXP_RATES["WŁASNY SQM BUS"].keys())))
+        t_weight = c2.number_input("Ciężar ładunku (kg):", min_value=0, value=500, step=100)
+        t_start = c3.date_input("Wyjazd:", datetime.now())
+        t_end = c4.date_input("Powrót:", datetime.now() + timedelta(days=4))
         
         calc = calculate_logistics(t_city, pd.to_datetime(t_start), pd.to_datetime(t_end), t_weight)
         if calc:
             st.markdown(f"""
             <div class="recommendation-box">
-                <b>NOTATKA SŁUŻBOWA:</b> Wykryto optymalny środek transportu: <u>{calc['name']}</u><br>
-                <b>KOSZT NETTO:</b> <span style="font-size: 1.3rem;">€ {calc['cost']:.2f}</span>
-                {f'<div class="uk-alert">⚠ UWAGA! OPŁATY NADZWYCZAJNE (UK):<br>{calc["uk_info"]}</div>' if calc["uk_info"] else ""}
+                <b>MELDUNK:</b> Sugerowany pojazd: <u>{calc['name']}</u><br>
+                <b>KOSZT SZACUNKOWY:</b> <span style="font-size: 1.4rem;">€ {calc['cost']:.2f} NETTO</span>
+                {f'<div class="uk-alert">🚨 UWAGA: OBSZAR UK (DOPŁATY):<br>{calc["uk_info"]}</div>' if calc["uk_info"] else ""}
             </div>
             """, unsafe_allow_html=True)
 
@@ -198,12 +208,12 @@ if menu == "📑 DZIENNIK PODCZYWCZY":
     active_df = df_all[active_mask].copy()
     archived_df = df_all[~active_mask].copy()
 
-    st.subheader(f"✍️ Rejestr Osobisty Urzędnika: {user}")
+    st.subheader(f"🖋️ Twoje Aktywne Zadania (Oficer: {user})")
     my_tasks = active_df[active_df["Logistyk"] == user].copy()
     
     col_config = {
         "Status": st.column_config.SelectboxColumn("Status", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"], required=True),
-        "Logistyk": st.column_config.SelectboxColumn("Logistyk", options=["DUKIEL", "KACZMAREK"], required=True),
+        "Logistyk": st.column_config.SelectboxColumn("Oficer", options=["DUKIEL", "KACZMAREK"], required=True),
         "Sloty": st.column_config.SelectboxColumn("Sloty", options=["TAK", "NIE", "NIE POTRZEBA"]),
         "Pierwszy wyjazd": st.column_config.DateColumn("Wyjazd"),
         "Data końca": st.column_config.DateColumn("Powrót")
@@ -211,7 +221,7 @@ if menu == "📑 DZIENNIK PODCZYWCZY":
     
     edited_my = st.data_editor(my_tasks, use_container_width=True, hide_index=True, column_config=col_config, key="editor_ops")
 
-    if st.button("💾 ZATWIERDŹ I OPISZ AKTA"):
+    if st.button("💾 ZATWIERDŹ ZMIANY W AKTACH"):
         others = df_all[~df_all.index.isin(my_tasks.index)].copy()
         for df in [edited_my, others]:
             df["Pierwszy wyjazd"] = pd.to_datetime(df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d').fillna('')
@@ -220,68 +230,56 @@ if menu == "📑 DZIENNIK PODCZYWCZY":
         final_df = pd.concat([edited_my, others], ignore_index=True)
         conn.update(worksheet="targi", data=final_df)
         st.cache_data.clear()
-        st.success("Akta zostały zaktualizowane pomyślnie.")
+        st.success("Zmiany naniesione w oficjalnym rejestrze.")
         st.rerun()
 
     st.markdown("---")
     partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
-    st.subheader(f"👁️ Podgląd Akt Współpracownika ({partner})")
+    st.subheader(f"👁️ Podgląd Sekcji Sąsiedniej ({partner})")
     partner_tasks = active_df[active_df["Logistyk"] == partner].copy()
     st.dataframe(partner_tasks, use_container_width=True, hide_index=True)
 
-    with st.expander("📁 Archiwum Akt Zakończonych"):
+    with st.expander("📁 Archiwum Operacji Zakończonych"):
         st.dataframe(archived_df, use_container_width=True, hide_index=True)
 
 # --- MODUŁ 2: KALENDARZ ---
-elif menu == "📅 KALENDARIUM WYJAZDÓW":
-    st.title("📅 Harmonogram Ruchu Pojazdów")
+elif menu == "📅 HARMONOGRAM WYJAZDÓW":
+    st.title("📅 Planer Mobilizacji Floty")
     events = []
     for _, r in df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna())].iterrows():
-        color = "#5d4037" if r["Logistyk"] == "DUKIEL" else "#8d6e63"
+        color = "#2b2f11" if r["Logistyk"] == "DUKIEL" else "#5d4037"
         events.append({
             "title": f"[{r['Logistyk']}] {r['Nazwa Targów']}",
             "start": r["Pierwszy wyjazd"].strftime("%Y-%m-%d"),
             "end": (r["Data końca"] + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
-            "backgroundColor": color
+            "backgroundColor": color,
+            "textColor": "#fdf5e6"
         })
     calendar(events=events, options={"locale": "pl", "firstDay": 1})
 
-# --- MODUŁ 3: GANTT ---
-elif menu == "📊 WYKRESY ZASOBÓW":
-    st.title("📊 Wykorzystanie Floty i Czasu")
-    df_viz = df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna()) & (df_all["Data końca"].notna())].copy()
-    if not df_viz.empty:
-        fig = px.timeline(df_viz, x_start="Pierwszy wyjazd", x_end="Data końca", y="Nazwa Targów", 
-                          color="Logistyk", color_discrete_map={"DUKIEL": "#5d4037", "KACZMAREK": "#8d6e63"},
-                          template="simple_white")
-        fig.update_layout(paper_bgcolor="#f4ecd8", plot_bgcolor="#fff", font_family="Special Elite")
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Brak aktywnych transportów do wygenerowania wykresu.")
-
-# --- MODUŁ 4: TABLICA ZADAŃ ---
-elif menu == "📋 KARTOTEKA ZADAŃ":
-    st.title("📋 Zadania do Wykonania i Notatki")
+# --- MODUŁ 4: NOTATKI ---
+elif menu == "📋 ROZKAZY I NOTATKI":
+    st.title("📋 Rejestr Rozkazów i Czynów Społecznych")
     limit_date = datetime.now() - timedelta(days=90)
     
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("### 🔴 DO ZAŁATWIENIA")
         for _, t in df_notes[df_notes["Status"] == "DO ZROBIENIA"].iterrows():
-            st.markdown(f"<div class='task-card'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>Zgłosił: {t['Autor']}</small></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='task-card'><b>{t.get('Tytul', 'ROZKAZ')}</b><br><small>Nadawca: {t['Autor']}</small></div>", unsafe_allow_html=True)
     with c2:
-        st.markdown("### 🟡 W TOKU")
+        st.markdown("### 🟡 W REALIZACJI")
         for _, t in df_notes[df_notes["Status"] == "W TRAKCIE"].iterrows():
-            st.markdown(f"<div class='task-card' style='border-top-color: #fbc02d'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>Zgłosił: {t['Autor']}</small></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='task-card' style='border-left-color: #fbc02d'><b>{t.get('Tytul', 'ROZKAZ')}</b><br><small>Nadawca: {t['Autor']}</small></div>", unsafe_allow_html=True)
 
     st.markdown("---")
-    st.subheader("🖋️ Osobista Karta Zadań")
+    st.subheader("🖋️ Osobisty Rejestr Notatek")
     my_notes = df_notes[df_notes["Autor"] == user].copy()
     
     edited_n = st.data_editor(my_notes, use_container_width=True, hide_index=True, num_rows="dynamic",
                               column_config={"Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"], required=True)})
     
-    if st.button("💾 ZAKTUALIZUJ KARTOTEKĘ"):
+    if st.button("💾 ZAPISZ W DZIENNIKU PODCZYWCZYM"):
         new_my = edited_n.copy()
         new_my["Autor"] = user
         new_my.loc[new_my["Status"] == "WYKONANE", "Data"] = new_my["Data"].fillna(datetime.now())
@@ -293,5 +291,5 @@ elif menu == "📋 KARTOTEKA ZADAŃ":
         
         conn.update(worksheet="ogloszenia", data=final_notes)
         st.cache_data.clear()
-        st.success("Kartoteka została przepisana pomyślnie.")
+        st.success("Księga notatek zaktualizowana.")
         st.rerun()
