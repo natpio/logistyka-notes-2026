@@ -98,11 +98,10 @@ if menu == "🏠 DZIENNIK OPERACJI":
     active_df = df_all[df_all["Status"] != "WRÓCIŁO"].copy()
     my_tasks = active_df[active_df["Logistyk"] == user].copy()
     st.subheader(f"✍️ Rejestr Osobisty: {user}")
-    edited_my = st.data_editor(my_tasks, use_container_width=True, hide_index=True, key="ops_ed")
+    edited_my = st.data_editor(my_tasks, use_container_width=True, hide_index=True)
     
     if st.button("💾 ZAPISZ DZIENNIK"):
         others = df_all[~df_all.index.isin(my_tasks.index)].copy()
-        # Formatowanie dat przed zapisem
         for d in [edited_my, others]:
             d["Pierwszy wyjazd"] = pd.to_datetime(d["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d')
             d["Data końca"] = pd.to_datetime(d["Data końca"]).dt.strftime('%Y-%m-%d')
@@ -141,14 +140,21 @@ elif menu == "📋 TABLICA ROZKAZÓW":
     st.markdown("---")
     st.subheader("🖋️ Zarządzanie Twoimi Zadaniami")
     my_notes = df_notes[df_notes["Autor"] == user].copy()
-    edited_n = st.data_editor(my_notes, use_container_width=True, hide_index=True, num_rows="dynamic",
-                              column_config={
-                                  "Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"]),
-                                  "Data": st.column_config.DatetimeColumn("Data", disabled=True),
-                                  "Autor": st.column_config.TextColumn("Autor", disabled=True),
-                                  "Tytul": st.column_config.TextColumn("Tytuł"),
-                                  "Tresc": st.column_config.TextColumn("Treść")
-                              })
+    
+    # Uproszczona konfiguracja (bez parametrów wywołujących błędy)
+    edited_n = st.data_editor(
+        my_notes, 
+        use_container_width=True, 
+        hide_index=True, 
+        num_rows="dynamic",
+        column_config={
+            "Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"]),
+            "Data": st.column_config.DatetimeColumn("Data", disabled=True),
+            "Autor": st.column_config.TextColumn("Autor", disabled=True),
+            "Tytul": st.column_config.TextColumn("Tytuł"),
+            "Tresc": st.column_config.TextColumn("Treść")
+        }
+    )
     
     if st.button("💾 ZAKTUALIZUJ TABLICĘ"):
         new_data = edited_n.copy()
