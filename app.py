@@ -5,33 +5,80 @@ import plotly.express as px
 from streamlit_calendar import calendar
 from datetime import datetime, timedelta
 
-# --- 1. KONFIGURACJA WIZUALNA ---
-st.set_page_config(page_title="SQM LOGISTICS PRO", layout="wide", initial_sidebar_state="expanded")
+# --- 1. KONFIGURACJA WIZUALNA: STYL RETRO PRL ---
+st.set_page_config(page_title="CENTRALE LOGISTYKI SQM", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap');
-    .stApp { background-color: #f8f9fa; font-family: 'Segoe UI', sans-serif; }
-    [data-testid="stSidebar"] { background-color: #ffffff; border-right: 1px solid #dee2e6; }
+    @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+    
+    .stApp { 
+        background-color: #c4c4c4; /* Betonowy szary */
+        font-family: 'Share Tech Mono', monospace; 
+    }
+    
+    /* Panele i kontenery jak z biura w 1985 r. */
+    [data-testid="stSidebar"] { 
+        background-color: #4a4a4a; 
+        color: white;
+        border-right: 5px double #ffffff; 
+    }
+    
     div[data-testid="stMetric"], .element-container {
-        background-color: #ffffff; border-radius: 10px; padding: 15px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 1px solid #e9ecef;
+        background-color: #e0e0e0; 
+        border: 2px solid #555;
+        box-shadow: 4px 4px 0px #000;
+        padding: 15px;
     }
+    
+    /* Przycisk - Socjalistyczny błękit roboczy */
     .stButton>button {
-        background-color: #004a99; color: white; border-radius: 6px;
-        border: none; padding: 0.5rem 1rem; font-weight: 600;
+        background-color: #003366; 
+        color: #ffd700; /* Złoty napis */
+        border-radius: 0px;
+        border: 3px solid #000;
+        font-weight: 900;
+        text-transform: uppercase;
+        width: 100%;
     }
+    
+    /* Karty zadań - jak kartoteka w segregatorze */
     .task-card {
-        background: #ffffff; padding: 12px; border-radius: 8px; margin-bottom: 10px;
-        border-left: 5px solid #004a99; box-shadow: 0 1px 3px rgba(0,0,0,0.1); color: #333;
+        background: #fdf5e6; 
+        padding: 12px;
+        border: 1px solid #999; 
+        margin-bottom: 10px;
+        border-left: 10px solid #cc0000; /* Czerwień flagowa */
+        box-shadow: 2px 2px 0px #000;
+        color: #222;
     }
+    
+    /* Rekomendacje - żółty papier urzędowy */
     .recommendation-box {
-        background-color: #e1effe; color: #1e429f; padding: 15px; border-radius: 10px; 
-        border: 1px solid #b2c5ff; line-height: 1.6; margin-bottom: 20px;
+        background-color: #ffeb3b; 
+        color: #000; 
+        padding: 15px;
+        border: 2px dashed #000;
+        line-height: 1.6; 
+        margin-bottom: 20px;
+        font-weight: bold;
     }
+
+    /* Alerty - Czerwona kartka */
     .uk-alert {
-        color: #9b1c1c; background-color: #fdf2f2; padding: 10px; border-radius: 5px; 
-        font-size: 0.85rem; margin-top: 10px; border-left: 4px solid #f05252;
+        color: #ffffff; 
+        background-color: #b71c1c; 
+        padding: 10px;
+        font-size: 0.9rem; 
+        margin-top: 10px; 
+        border: 2px solid #000;
+        text-transform: uppercase;
+    }
+
+    h1, h2, h3 {
+        color: #2e2e2e;
+        text-transform: uppercase;
+        letter-spacing: 2px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -69,7 +116,7 @@ def calculate_logistics(city, start_date, end_date, weight):
                 uk_details = "Prom (€450), ATA (€166), Mosty (€19), Low Ems (€40)"
             else:
                 uk_extra = ata + 522.0 + 19.0 + 69.0 + 30.0
-                uk_details = "Prom (€522), ATA (€166), Mosty (€19), Low Ems (€69), Fuel (€30)"
+                uk_details = "Prom (€522), ATA (€166), Mosty (€19), Low Ems (€69), Paliwo (€30)"
         
         total = (base_exp * 2) + (meta["postoj"] * overlay) + uk_extra
         results.append({"name": name, "cost": total, "uk_info": uk_details})
@@ -77,19 +124,20 @@ def calculate_logistics(city, start_date, end_date, weight):
 
 # --- 3. POŁĄCZENIE I LOGOWANIE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
-st.sidebar.markdown("<h2 style='text-align: center; color: #004a99;'>SQM LOGISTYKA</h2>", unsafe_allow_html=True)
-user = st.sidebar.selectbox("👤 Użytkownik:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
+st.sidebar.markdown("<h2 style='text-align: center; color: #ffd700;'>PRZEDSIĘBIORSTWO SQM</h2>", unsafe_allow_html=True)
+user = st.sidebar.selectbox("👤 Towarzysz Logistyk:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
 user_pins = {"DUKIEL": "9607", "KACZMAREK": "1225"}
 
 is_authenticated = False
 if user != "Wybierz...":
-    input_pin = st.sidebar.text_input("PIN:", type="password")
+    input_pin = st.sidebar.text_input("HASŁO (PIN):", type="password")
     if input_pin == user_pins.get(user):
         is_authenticated = True
     elif input_pin:
-        st.sidebar.error("❌ Błędny PIN")
+        st.sidebar.error("❌ ODMOWA DOSTĘPU")
 
 if not is_authenticated:
+    st.info("Proszę podać hasło w celu autoryzacji w systemie.")
     st.stop()
 
 # --- 4. POBIERANIE DANYCH ---
@@ -102,61 +150,57 @@ try:
     df_notes["Data"] = pd.to_datetime(df_notes["Data"], errors='coerce')
     df_notes["Autor"] = df_notes["Autor"].astype(str).str.upper()
 except Exception:
-    st.error("Błąd połączenia z bazą danych.")
+    st.error("Błąd połączenia z Centralną Bazą Danych.")
     st.stop()
 
 # --- 5. MENU ---
-menu = st.sidebar.radio("Nawigacja:", ["🏠 CENTRUM OPERACYJNE", "📅 KALENDARZ", "📊 OŚ CZASU (GANTT)", "📋 TABLICA ZADAŃ"])
+menu = st.sidebar.radio("DYREKTYWY:", ["🏠 DYŻURKA OPERACYJNA", "📅 PLAN PIĘCIOLATKI (KALENDARZ)", "📊 WYKRESY PRACY (GANTT)", "📋 GAZETKA ŚCIENNA"])
 
 # --- MODUŁ 1: CENTRUM OPERACYJNE ---
-if menu == "🏠 CENTRUM OPERACYJNE":
-    st.title("🛰️ Centrum Operacyjne SQM")
+if menu == "🏠 DYŻURKA OPERACYJNA":
+    st.title("📟 Główna Dyspozytura SQM")
     
     # KALKULATOR KOSZTÓW
-    with st.expander("🧮 Kalkulator Cennikowy 2026", expanded=True):
+    with st.expander("🧮 Normy Transportowe 2026", expanded=True):
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
-        t_city = c1.selectbox("Kierunek (Miasto):", sorted(list(EXP_RATES["WŁASNY SQM BUS"].keys())))
-        t_weight = c2.number_input("Waga ładunku (kg):", min_value=0, value=500, step=100)
-        t_start = c3.date_input("Planowany wyjazd:", datetime.now())
-        t_end = c4.date_input("Planowany powrót:", datetime.now() + timedelta(days=4))
+        t_city = c1.selectbox("Kierunek (Miasto docelowe):", sorted(list(EXP_RATES["WŁASNY SQM BUS"].keys())))
+        t_weight = c2.number_input("Ciężar ładunku (kg):", min_value=0, value=500, step=100)
+        t_start = c3.date_input("Data wyjazdu:", datetime.now())
+        t_end = c4.date_input("Data powrotu:", datetime.now() + timedelta(days=4))
         
         calc = calculate_logistics(t_city, pd.to_datetime(t_start), pd.to_datetime(t_end), t_weight)
         if calc:
             st.markdown(f"""
             <div class="recommendation-box">
-                <b>Rekomendowany transport:</b> {calc['name']}<br>
-                <b>Koszt szacowany:</b> <span style="font-size: 1.3rem;">€ {calc['cost']:.2f} netto</span>
-                {f'<div class="uk-alert"><b>Doliczono koszty UK:</b><br>{calc["uk_info"]}</div>' if calc["uk_info"] else ""}
+                <b>REKOMENDACJA ZAKŁADU:</b> {calc['name']}<br>
+                <b>PRZEWIDYWANY KOSZT DEWIZOWY:</b> <span style="font-size: 1.3rem;">€ {calc['cost']:.2f} netto</span>
+                {f'<div class="uk-alert"><b>UWAGA! CŁO I OPŁATY UK:</b><br>{calc["uk_info"]}</div>' if calc["uk_info"] else ""}
             </div>
             """, unsafe_allow_html=True)
 
     st.markdown("---")
     
-    # FILTROWANIE ARCHIWUM (Status: WRÓCIŁO)
+    # FILTROWANIE ARCHIWUM
     active_mask = df_all["Status"] != "WRÓCIŁO"
     active_df = df_all[active_mask].copy()
     archived_df = df_all[~active_mask].copy()
 
     # TWOJE PROJEKTY (EDYCJA)
-    st.subheader(f"✍️ Twoje Aktywne Projekty (Logistyk: {user})")
+    st.subheader(f"✍️ Twój Rejestr Roboczy (Obywatel: {user})")
     my_tasks = active_df[active_df["Logistyk"] == user].copy()
     
-    # KONFIGURACJA LIST WYBORU
     col_config = {
         "Status": st.column_config.SelectboxColumn("Status", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"], required=True),
-        "Logistyk": st.column_config.SelectboxColumn("Logistyk", options=["DUKIEL", "KACZMAREK"], required=True),
-        "Sloty": st.column_config.SelectboxColumn("Sloty", options=["TAK", "NIE", "NIE POTRZEBA"]),
-        "Pierwszy wyjazd": st.column_config.DateColumn("Wyjazd"),
-        "Data końca": st.column_config.DateColumn("Powrót")
+        "Logistyk": st.column_config.SelectboxColumn("Odpowiedzialny", options=["DUKIEL", "KACZMAREK"], required=True),
+        "Sloty": st.column_config.SelectboxColumn("Przydział Slotu", options=["TAK", "NIE", "NIE POTRZEBA"]),
+        "Pierwszy wyjazd": st.column_config.DateColumn("Start"),
+        "Data końca": st.column_config.DateColumn("Koniec")
     }
     
     edited_my = st.data_editor(my_tasks, use_container_width=True, hide_index=True, column_config=col_config, key="editor_ops")
 
-    if st.button("💾 ZAPISZ HARMONOGRAM"):
-        # Przygotowanie danych do zapisu (Twoje edytowane + reszta z bazy)
+    if st.button("💾 ZATWIERDŹ I WYŚLIJ DO CENTRALNI"):
         others = df_all[~df_all.index.isin(my_tasks.index)].copy()
-        
-        # Konwersja dat na string dla Google Sheets
         for df in [edited_my, others]:
             df["Pierwszy wyjazd"] = pd.to_datetime(df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d').fillna('')
             df["Data końca"] = pd.to_datetime(df["Data końca"]).dt.strftime('%Y-%m-%d').fillna('')
@@ -164,27 +208,27 @@ if menu == "🏠 CENTRUM OPERACYJNE":
         final_df = pd.concat([edited_my, others], ignore_index=True)
         conn.update(worksheet="targi", data=final_df)
         st.cache_data.clear()
-        st.success("Zmiany zapisane. Projekty ze statusem 'WRÓCIŁO' zostały przeniesione do archiwum.")
+        st.success("Raport wysłany pomyślnie. Projekty 'WRÓCIŁO' przekazano do Archiwum Państwowego.")
         st.rerun()
 
     st.markdown("---")
     
     # PODGLĄD PARTNERA
     partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
-    st.subheader(f"👁️ Podgląd Partnera (Tylko do odczytu: {partner})")
+    st.subheader(f"👁️ Kontrola Międzyzakładowa (Partner: {partner})")
     partner_tasks = active_df[active_df["Logistyk"] == partner].copy()
     st.dataframe(partner_tasks, use_container_width=True, hide_index=True)
 
     # ARCHIWUM TARGÓW
-    with st.expander("📁 Zobacz Archiwum (Zrealizowane / WRÓCIŁO)"):
+    with st.expander("📁 Archiwum Zakładowe (Zrealizowane)"):
         st.dataframe(archived_df, use_container_width=True, hide_index=True)
 
 # --- MODUŁ 2: KALENDARZ ---
-elif menu == "📅 KALENDARZ":
-    st.title("📅 Grafik Wyjazdów")
+elif menu == "📅 PLAN PIĘCIOLATKI (KALENDARZ)":
+    st.title("📅 Grafik Delegacji Służbowych")
     events = []
     for _, r in df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna())].iterrows():
-        color = "#004a99" if r["Logistyk"] == "DUKIEL" else "#e67e22"
+        color = "#cc0000" if r["Logistyk"] == "DUKIEL" else "#003366"
         events.append({
             "title": f"[{r['Logistyk']}] {r['Nazwa Targów']}",
             "start": r["Pierwszy wyjazd"].strftime("%Y-%m-%d"),
@@ -194,61 +238,60 @@ elif menu == "📅 KALENDARZ":
     calendar(events=events, options={"locale": "pl", "firstDay": 1})
 
 # --- MODUŁ 3: GANTT ---
-elif menu == "📊 OŚ CZASU (GANTT)":
-    st.title("📊 Obłożenie Floty")
+elif menu == "📊 WYKRESY PRACY (GANTT)":
+    st.title("📊 Wykorzystanie Środków Transportu")
     df_viz = df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna()) & (df_all["Data końca"].notna())].copy()
     if not df_viz.empty:
         fig = px.timeline(df_viz, x_start="Pierwszy wyjazd", x_end="Data końca", y="Nazwa Targów", 
-                          color="Logistyk", color_discrete_map={"DUKIEL": "#004a99", "KACZMAREK": "#e67e22"},
+                          color="Logistyk", color_discrete_map={"DUKIEL": "#cc0000", "KACZMAREK": "#003366"},
                           template="plotly_white")
         fig.update_yaxes(autorange="reversed")
+        fig.update_layout(paper_bgcolor="#c4c4c4", plot_bgcolor="#c4c4c4")
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Brak aktywnych transportów do wyświetlenia na osi czasu.")
+        st.info("Brak aktywnych transportów w planie bieżącym.")
 
 # --- MODUŁ 4: TABLICA ZADAŃ ---
-elif menu == "📋 TABLICA ZADAŃ":
-    st.title("📋 Kanban & Archiwum Zadania")
+elif menu == "📋 GAZETKA ŚCIENNA":
+    st.title("📋 Zadania i Czyny Społeczne")
     
     limit_date = datetime.now() - timedelta(days=90)
     
     # Kanban View
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("### 🔴 DO ZROBIENIA")
+        st.markdown("### 🔴 DO REALIZACJI")
         for _, t in df_notes[df_notes["Status"] == "DO ZROBIENIA"].iterrows():
-            st.markdown(f"<div class='task-card' style='border-left-color: #dc3545'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>{t['Autor']}</small></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='task-card' style='border-left-color: #cc0000'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>Zgłosił: {t['Autor']}</small></div>", unsafe_allow_html=True)
     with c2:
-        st.markdown("### 🟡 W TRAKCIE")
+        st.markdown("### 🟡 W TOKU")
         for _, t in df_notes[df_notes["Status"] == "W TRAKCIE"].iterrows():
-            st.markdown(f"<div class='task-card' style='border-left-color: #ffc107'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>{t['Autor']}</small></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='task-card' style='border-left-color: #ffd700'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>Zgłosił: {t['Autor']}</small></div>", unsafe_allow_html=True)
 
     st.markdown("---")
-    st.subheader("🖋️ Zarządzaj swoimi zadaniami")
+    st.subheader("🖋️ Osobista Karta Pracy")
     my_notes = df_notes[df_notes["Autor"] == user].copy()
     
     edited_n = st.data_editor(my_notes, use_container_width=True, hide_index=True, num_rows="dynamic",
                               column_config={"Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"], required=True)})
     
-    if st.button("💾 AKTUALIZUJ TABLICĘ"):
+    if st.button("💾 ZAPISZ W DZIENNIKU ZADAŃ"):
         new_my = edited_n.copy()
         new_my["Autor"] = user
-        # Automatyczna data dla wykonanych
         new_my.loc[new_my["Status"] == "WYKONANE", "Data"] = new_my["Data"].fillna(datetime.now())
         
         others_n = df_notes[df_notes["Autor"] != user].copy()
         combined = pd.concat([new_my, others_n], ignore_index=True)
         
-        # Archiwizacja: Usuń wykonane starsze niż 90 dni
         combined["Data"] = pd.to_datetime(combined["Data"], errors='coerce')
         final_notes = combined[~((combined["Status"] == "WYKONANE") & (combined["Data"] < limit_date))].copy()
         final_notes["Data"] = final_notes["Data"].dt.strftime('%Y-%m-%d').fillna('')
         
         conn.update(worksheet="ogloszenia", data=final_notes)
         st.cache_data.clear()
-        st.success("Tablica zadań zaktualizowana.")
+        st.success("Gazetka ścienna zaktualizowana.")
         st.rerun()
 
-    with st.expander("📁 Archiwum Zadań (Ostatnie 90 dni)"):
+    with st.expander("📁 Archiwum Czynów Społecznych (Wykonane 90 dni)"):
         archive_notes = df_notes[(df_notes["Status"] == "WYKONANE") & (df_notes["Data"] >= limit_date)]
         st.dataframe(archive_notes, use_container_width=True, hide_index=True)
