@@ -168,13 +168,15 @@ if not is_authenticated:
 
 # --- 4. POBIERANIE DANYCH  ---
 try:
-    df_all = conn.read(worksheet="targi", ttl=300).dropna(subset=["Nazwa Targów"])
+    df_all = conn.read(worksheet="targi", ttl=10).dropna(subset=["Nazwa Targów"])
     df_all["Pierwszy wyjazd"] = pd.to_datetime(df_all["Pierwszy wyjazd"], errors='coerce')
     df_all["Data końca"] = pd.to_datetime(df_all["Data końca"], errors='coerce')
 
-    df_notes = conn.read(worksheet="ogloszenia", ttl=300).dropna(how='all')
+    df_notes = conn.read(worksheet="ogloszenia", ttl=10).dropna(how='all')
     df_notes["Data"] = pd.to_datetime(df_notes["Data"], errors='coerce')
     df_notes["Autor"] = df_notes["Autor"].astype(str).str.upper()
+    # Sortowanie notatek od najnowszych
+    df_notes = df_notes.sort_values(by="Data", ascending=False)
 except Exception:
     st.error("Błąd połączenia z bazą danych.")
     st.stop()
@@ -205,7 +207,6 @@ if menu == "🏠 DZIENNIK OPERACJI":
 
     st.markdown("---")
     
-    # Filtrowanie archiwum (Twoja logika Status: WRÓCIŁO) 
     active_mask = df_all["Status"] != "WRÓCIŁO"
     active_df = df_all[active_mask].copy()
     archived_df = df_all[~active_mask].copy()
@@ -232,12 +233,11 @@ if menu == "🏠 DZIENNIK OPERACJI":
         final_df = pd.concat([edited_my, others], ignore_index=True)
         conn.update(worksheet="targi", data=final_df)
         st.cache_data.clear()
-        st.success("Zmiany zapisane. Projekty ze statusem 'WRÓCIŁO' zostały zarchiwizowane.")
+        st.success("Zmiany zapisane.")
         st.rerun()
 
     st.markdown("---")
     
-    # Podgląd Partnera (Tylko do odczytu) 
     partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
     st.subheader(f"👁️ Podgląd Sekcji Sąsiedniej (Tylko odczyt: {partner})")
     st.dataframe(active_df[active_df["Logistyk"] == partner], use_container_width=True, hide_index=True)
@@ -273,41 +273,67 @@ elif menu == "📊 WYKRES GANTA":
     else:
         st.info("Brak aktywnych transportów do wyświetlenia.")
 
-# --- MODUŁ 4: TABLICA ROZKAZÓW (TWOJA LOGIKA ARCHIWIZACJI)  ---
+# --- MODUŁ 4: TABLICA ROZKAZÓW ---
 elif menu == "📋 TABLICA ROZKAZÓW":
     st.title("📋 Meldunki i Rozkazy")
-    limit_date = datetime.now() - timedelta(days=90) # Logika archiwizacji 90 dni 
+    limit_date = datetime.now() - timedelta(days=90)
     
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("### 🔴 DO ZAŁATWIENIA")
-        for _, t in df_notes[df_notes["Status"] == "DO ZROBIENIA"].iterrows():
-            st.markdown(f"<div class='task-card' style='border-left-color: #8b0000'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>{t['Autor']}</small></div>", unsafe_allow_html=True)
+        todo = df_notes[df_notes["Status"] == "DO ZROBIENIA"]
+        for _, t in todo.iterrows():
+            st.markdown(f"<div class='task-card' style='border-left-color: #8b0000'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>{t['Autor']} | {t['Data'].strftime('%Y-%m-%d') if pd.notna(t['Data']) else ''}</small><br>{t.get('Tresc', '')}</div>", unsafe_allow_html=True)
     with c2:
         st.markdown("### 🟡 W REALIZACJI")
-        for _, t in df_notes[df_notes["Status"] == "W TRAKCIE"].iterrows():
-            st.markdown(f"<div class='task-card' style='border-left-color: #fbc02d'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>{t['Autor']}</small></div>", unsafe_allow_html=True)
+        doing = df_notes[df_notes["Status"] == "W TRAKCIE"]
+        for _, t in doing.iterrows():
+            st.markdown(f"<div class='task-card' style='border-left-color: #fbc02d'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>{t['Autor']} | {t['Data'].strftime('%Y-%m-%d') if pd.notna(t['Data']) else ''}</small><br>{t.get('Tresc', '')}</div>", unsafe_allow_html=True)
 
     st.markdown("---")
     st.subheader("🖋️ Zarządzanie Zadaniami")
+    
+    # Przygotowanie danych do edytora dla aktualnego użytkownika
     my_notes = df_notes[df_notes["Autor"] == user].copy()
     
-    edited_n = st.data_editor(my_notes, use_container_width=True, hide_index=True, num_rows="dynamic",
-                              column_config={"Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"], required=True)})
+    edited_n = st.data_editor(
+        my_notes, 
+        use_container_width=True, 
+        hide_index=True, 
+        num_rows="dynamic",
+        column_config={
+            "Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"], required=True),
+            "Data": st.column_config.DateColumn("Data"),
+            "Tytul": st.column_config.TextColumn("Tytuł", required=True),
+            "Tresc": st.column_config.TextColumn("Treść")
+        },
+        key="editor_notes"
+    )
     
     if st.button("💾 ZAKTUALIZUJ TABLICĘ"):
+        # Przetwarzanie edytowanych danych
         new_my = edited_n.copy()
-        new_my["Autor"] = user
-        # TWOJA FUNKCJA: Automatyczna data dla wykonanych 
-        new_my.loc[new_my["Status"] == "WYKONANE", "Data"] = new_my["Data"].fillna(datetime.now())
         
+        # Kluczowe: Uzupełnienie brakujących danych dla nowych wierszy
+        new_my["Autor"] = user
+        # Jeśli data jest pusta (nowy wiersz), wstaw dzisiejszą
+        new_my["Data"] = pd.to_datetime(new_my["Data"]).fillna(datetime.now())
+        
+        # Pozostałe notatki (innych autorów)
         others_n = df_notes[df_notes["Autor"] != user].copy()
+        
+        # Połączenie
         combined = pd.concat([new_my, others_n], ignore_index=True)
         combined["Data"] = pd.to_datetime(combined["Data"], errors='coerce')
         
-        # TWOJA LOGIKA ARCHIWIZACJI: Usuń wykonane starsze niż 90 dni 
+        # Logika archiwizacji
         final_notes = combined[~((combined["Status"] == "WYKONANE") & (combined["Data"] < limit_date))].copy()
-        final_notes["Data"] = final_notes["Data"].dt.strftime('%Y-%m-%d').fillna('')
+        
+        # Sortowanie przed zapisem, aby w Arkuszach też był porządek
+        final_notes = final_notes.sort_values(by="Data", ascending=False)
+        
+        # Formatowanie daty do zapisu w GSheets
+        final_notes["Data"] = final_notes["Data"].dt.strftime('%Y-%m-%d %H:%M:%S')
         
         conn.update(worksheet="ogloszenia", data=final_notes)
         st.cache_data.clear()
