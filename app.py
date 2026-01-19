@@ -178,7 +178,10 @@ menu = st.sidebar.radio("PROTOKÓŁ:", ["🏠 DZIENNIK OPERACJI", "📅 KALENDAR
 if menu == "🏠 DZIENNIK OPERACJI":
     st.title("📑 Bieżący Dziennik Transportów")
     
-    # --- FORMULARZ BEZ NOWYCH KOLUMN ---
+    # --- WYSZUKIWARKA ---
+    search_q = st.text_input("🔍 SZUKAJ (Wpisz nazwę targów, status lub logistyka):", "").lower()
+
+    # --- FORMULARZ DODAWANIA ---
     with st.expander("➕ NOWY MELDUNEK (DODAJ TARGI)", expanded=False):
         with st.form("new_entry_form"):
             f_name = st.text_input("Nazwa Targów / Projektu:")
@@ -188,7 +191,6 @@ if menu == "🏠 DZIENNIK OPERACJI":
             f_status = c3.selectbox("Status początkowy:", ["OCZEKUJE", "W TRAKCIE"])
             
             if st.form_submit_button("ZATWIERDŹ I DOPISZ DO AKT"):
-                # Tworzymy wiersz używając wyłącznie istniejących kolumn z Twojej bazy
                 new_data = pd.DataFrame([{
                     "Nazwa Targów": f_name,
                     "Pierwszy wyjazd": f_start.strftime('%Y-%m-%d'),
@@ -197,10 +199,7 @@ if menu == "🏠 DZIENNIK OPERACJI":
                     "Status": f_status,
                     "Sloty": "NIE"
                 }])
-                # Używamy pd.concat, aby dopisać nowy wiersz do reszty danych
                 updated_df = pd.concat([df_all, new_data], ignore_index=True)
-                
-                # Konwersja dat przed wysyłką do GSheets, aby uniknąć błędów formatowania
                 updated_df["Pierwszy wyjazd"] = pd.to_datetime(updated_df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d').fillna('')
                 updated_df["Data końca"] = pd.to_datetime(updated_df["Data końca"]).dt.strftime('%Y-%m-%d').fillna('')
                 
@@ -209,6 +208,7 @@ if menu == "🏠 DZIENNIK OPERACJI":
                 st.success(f"Dodano projekt: {f_name}")
                 st.rerun()
 
+    # --- KALKULATOR ---
     with st.expander("🧮 Kalkulator Norm Zaopatrzenia 2026", expanded=False):
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
         t_city = c1.selectbox("Kierunek:", sorted(list(EXP_RATES["WŁASNY SQM BUS"].keys())), key="calc_city")
@@ -228,12 +228,15 @@ if menu == "🏠 DZIENNIK OPERACJI":
 
     st.markdown("---")
     
+    # --- PRZYGOTOWANIE DANYCH DO TABELI ---
     active_mask = df_all["Status"] != "WRÓCIŁO"
     active_df = df_all[active_mask].copy()
-    archived_df = df_all[~active_mask].copy()
+    
+    # Aplikacja wyszukiwarki
+    if search_q:
+        active_df = active_df[active_df.astype(str).apply(lambda x: x.str.lower().str.contains(search_q)).any(axis=1)]
 
-    st.subheader(f"✍️ Rejestr Osobisty: {user}")
-    my_tasks = active_df[active_df["Logistyk"] == user].copy()
+    st.subheader(f"✍️ Rejestr Operacyjny (Użytkownik: {user})")
     
     col_config = {
         "Status": st.column_config.SelectboxColumn("Status", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"], required=True),
@@ -243,31 +246,28 @@ if menu == "🏠 DZIENNIK OPERACJI":
         "Data końca": st.column_config.DateColumn("Powrót")
     }
     
-    edited_my = st.data_editor(my_tasks, use_container_width=True, hide_index=True, column_config=col_config, key="editor_ops", num_rows="dynamic")
+    # Tabela z natywnym sortowaniem (kliknięcie w nagłówek)
+    edited_active = st.data_editor(active_df, use_container_width=True, hide_index=True, column_config=col_config, key="editor_ops", num_rows="dynamic")
 
     if st.button("💾 ZAPISZ I ZALAKUJ AKTA"):
-        others = df_all[~df_all.index.isin(my_tasks.index)].copy()
-        for df in [edited_my, others]:
-            if "Pierwszy wyjazd" in df.columns:
+        # Połącz edytowane dane z resztą (tymi których nie było w widoku szukania/aktywnych)
+        others = df_all[~df_all.index.isin(active_df.index)].copy()
+        
+        # Formatowanie dat we wszystkich częściach
+        for df in [edited_active, others]:
+            if not df.empty:
                 df["Pierwszy wyjazd"] = pd.to_datetime(df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d').fillna('')
-            if "Data końca" in df.columns:
-                df["Data końca"] = pd.to_datetime(df["Data końca"]).dt.strftime('%Y-%m-%d').fillna('')
-            
-        final_df = pd.concat([edited_my, others], ignore_index=True)
-        final_df = final_df.dropna(subset=["Nazwa Targów"])
+                df["Data koniec"] = pd.to_datetime(df["Data końca"]).dt.strftime('%Y-%m-%d').fillna('')
+        
+        final_df = pd.concat([edited_active, others], ignore_index=True).dropna(subset=["Nazwa Targów"])
         
         conn.update(worksheet="targi", data=final_df)
         st.cache_data.clear()
-        st.success("Zmiany zapisane. Projekty ze statusem 'WRÓCIŁO' zostały zarchiwizowane.")
+        st.success("Dane zapisane pomyślnie.")
         st.rerun()
 
-    st.markdown("---")
-    
-    partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
-    st.subheader(f"👁️ Podgląd Sekcji Sąsiedniej (Tylko odczyt: {partner})")
-    st.dataframe(active_df[active_df["Logistyk"] == partner], use_container_width=True, hide_index=True)
-
-    with st.expander("📁 Zobacz Archiwum (WRÓCIŁO)"):
+    with st.expander("📁 Zobacz Archiwum (Status: WRÓCIŁO)"):
+        archived_df = df_all[df_all["Status"] == "WRÓCIŁO"].copy()
         st.dataframe(archived_df, use_container_width=True, hide_index=True)
 
 # --- MODUŁ 2: KALENDARZ ---
@@ -287,7 +287,6 @@ elif menu == "📅 KALENDARZ":
 # --- MODUŁ 3: WYKRES GANTA ---
 elif menu == "📊 WYKRES GANTA":
     st.title("📊 Harmonogram Operacyjny (Oś Czasu)")
-    
     df_viz = df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna()) & (df_all["Data końca"].notna())].copy()
     if not df_viz.empty:
         fig = px.timeline(df_viz, x_start="Pierwszy wyjazd", x_end="Data końca", y="Nazwa Targów", 
