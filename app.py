@@ -221,7 +221,7 @@ if menu == "🏠 DZIENNIK OPERACJI":
         "Data końca": st.column_config.DateColumn("Powrót")
     }
     
-    edited_my = st.data_editor(my_tasks, use_container_width=True, hide_index=True, column_config=col_config, key="editor_ops")
+ edited_my = st.data_editor(my_tasks, use_container_width=True, hide_index=True, column_config=col_config, key="editor_ops", num_rows="dynamic")
 
     if st.button("💾 ZAPISZ I ZALAKUJ AKTA"):
         others = df_all[~df_all.index.isin(my_tasks.index)].copy()
