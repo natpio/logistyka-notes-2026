@@ -144,8 +144,13 @@ def calculate_logistics(city, start_date, end_date, weight):
         results.append({"name": name, "cost": total, "uk_info": uk_details})
     return sorted(results, key=lambda x: x["cost"])[0] if results else None
 
+# --- AGENT AI (Zabezpieczony przed brakiem klucza) ---
 def darmowy_agent_logistyczny(transcript, df):
-    client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+    api_key = st.secrets.get("GROQ_API_KEY")
+    if not api_key:
+        return {"akcja": "brak_klucza"}
+        
+    client = Groq(api_key=api_key)
     kontekst = df[['Nazwa Targów', 'Status', 'Logistyk']].to_string()
     
     prompt = f"""
@@ -162,12 +167,15 @@ def darmowy_agent_logistyczny(transcript, df):
     
     Zwróć TYLKO czysty JSON.
     """
-    chat_completion = client.chat.completions.create(
-        messages=[{"role": "user", "content": prompt}],
-        model="llama3-70b-8192",
-        response_format={ "type": "json_object" }
-    )
-    return json.loads(chat_completion.choices[0].message.content)
+    try:
+        chat_completion = client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="llama3-70b-8192",
+            response_format={ "type": "json_object" }
+        )
+        return json.loads(chat_completion.choices[0].message.content)
+    except Exception as e:
+        return {"akcja": "error", "message": str(e)}
 
 # --- 3. POŁĄCZENIE I LOGOWANIE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -200,43 +208,54 @@ except Exception:
     st.error("Błąd połączenia z bazą danych.")
     st.stop()
 
-# --- MODUŁ GŁOSOWY ---
+# --- TERMINAL GŁOSOWY ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("🎙️ TERMINAL GŁOSOWY")
-audio = mic_recorder(start_prompt="NADAJ MELDUNEK", stop_prompt="KONIEC", key='mic_pro')
 
-if audio:
-    try:
-        client = Groq(api_key=st.secrets["GROQ_API_KEY"])
-        with st.spinner("Przetwarzanie rozkazu..."):
-            with open("temp_audio.wav", "wb") as f:
-                f.write(audio['bytes'])
-            with open("temp_audio.wav", "rb") as file:
-                transcription = client.audio.transcriptions.create(file=file, model="whisper-large-v3-turbo")
-            
-            st.sidebar.info(f"Usłyszano: {transcription.text}")
-            rozkaz = darmowy_agent_logistyczny(transcription.text, df_all)
+# Sprawdzenie obecności klucza w secrets przed uruchomieniem mikrofonu
+if "GROQ_API_KEY" not in st.secrets:
+    st.sidebar.warning("⚠️ Brak klucza GROQ_API_KEY w panelu Secrets. Terminal głosowy nieaktywny.")
+else:
+    audio = mic_recorder(start_prompt="NADAJ MELDUNEK", stop_prompt="KONIEC", key='mic_pro')
 
-            if rozkaz['akcja'] == 'edytuj':
-                idx = df_all[df_all['Nazwa Targów'] == rozkaz['nazwa']].index
-                if not idx.empty:
-                    df_all.at[idx[0], rozkaz['pole']] = rozkaz['wartosc']
-                    conn.update(worksheet="targi", data=df_all)
+    if audio:
+        try:
+            client = Groq(api_key=st.secrets["GROQ_API_KEY"])
+            with st.spinner("Przetwarzanie rozkazu..."):
+                with open("temp_audio.wav", "wb") as f:
+                    f.write(audio['bytes'])
+                with open("temp_audio.wav", "rb") as file:
+                    transcription = client.audio.transcriptions.create(file=file, model="whisper-large-v3-turbo")
+                
+                st.sidebar.info(f"Usłyszano: {transcription.text}")
+                rozkaz = darmowy_agent_logistyczny(transcription.text, df_all)
+
+                if rozkaz.get('akcja') == 'edytuj':
+                    idx = df_all[df_all['Nazwa Targów'] == rozkaz['nazwa']].index
+                    if not idx.empty:
+                        df_all.at[idx[0], rozkaz['pole']] = rozkaz['wartosc']
+                        # Formatowanie dat przed zapisem
+                        df_to_save = df_all.copy()
+                        df_to_save["Pierwszy wyjazd"] = df_to_save["Pierwszy wyjazd"].dt.strftime('%Y-%m-%d').fillna('')
+                        df_to_save["Data końca"] = df_to_save["Data końca"].dt.strftime('%Y-%m-%d').fillna('')
+                        conn.update(worksheet="targi", data=df_to_save)
+                        st.cache_data.clear()
+                        st.sidebar.success(f"Zaktualizowano: {rozkaz['nazwa']}")
+                        st.rerun()
+                
+                elif rozkaz.get('akcja') == 'dodaj':
+                    nowy_wpis = pd.DataFrame([rozkaz['dane']])
+                    nowy_wpis['Logistyk'] = user
+                    nowy_wpis['Sloty'] = "NIE"
+                    df_updated = pd.concat([df_all, nowy_wpis], ignore_index=True)
+                    df_updated["Pierwszy wyjazd"] = pd.to_datetime(df_updated["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d').fillna('')
+                    df_updated["Data końca"] = pd.to_datetime(df_updated["Data końca"]).dt.strftime('%Y-%m-%d').fillna('')
+                    conn.update(worksheet="targi", data=df_updated)
                     st.cache_data.clear()
-                    st.sidebar.success(f"Zaktualizowano: {rozkaz['nazwa']}")
+                    st.sidebar.success("Dodano nowy projekt!")
                     st.rerun()
-            
-            elif rozkaz['akcja'] == 'dodaj':
-                nowy_wpis = pd.DataFrame([rozkaz['dane']])
-                nowy_wpis['Logistyk'] = user
-                nowy_wpis['Sloty'] = "NIE"
-                df_updated = pd.concat([df_all, nowy_wpis], ignore_index=True)
-                conn.update(worksheet="targi", data=df_updated)
-                st.cache_data.clear()
-                st.sidebar.success("Dodano nowy projekt!")
-                st.rerun()
-    except Exception as e:
-        st.sidebar.error(f"Błąd AI: {e}")
+        except Exception as e:
+            st.sidebar.error(f"Błąd AI: {e}")
 
 # --- 5. MENU REJESTRÓW ---
 menu = st.sidebar.radio("PROTOKÓŁ:", ["🏠 DZIENNIK OPERACJI", "📅 KALENDARZ", "📊 WYKRES GANTA", "📋 TABLICA ROZKAZÓW"])
@@ -351,7 +370,6 @@ elif menu == "📊 WYKRES GANTA":
 # --- MODUŁ 4: TABLICA ROZKAZÓW ---
 elif menu == "📋 TABLICA ROZKAZÓW":
     st.title("📋 Meldunki i Rozkazy")
-    limit_date = datetime.now() - timedelta(days=90) 
     
     c1, c2 = st.columns(2)
     with c1:
