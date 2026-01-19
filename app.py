@@ -113,9 +113,9 @@ EXP_RATES = {
 }
 
 RATES_META = {
-    "WŁASNY SQM BUS": {"postoj": 30, "cap": 1000, "vClass": "BUS"},
-    "WŁASNY SQM SOLO": {"postoj": 100, "cap": 5500, "vClass": "SOLO"},
-    "WŁASNY SQM FTL": {"postoj": 150, "cap": 10500, "vClass": "FTL"}
+    "WŁASNY SQM BUS": {"postoj": 30, "cap": 1200, "vClass": "BUS"},
+    "WŁASNY SQM SOLO": {"postoj": 100, "cap": 6000, "vClass": "SOLO"},
+    "WŁASNY SQM FTL": {"postoj": 150, "cap": 24000, "vClass": "FTL"}
 }
 
 def calculate_logistics(city, start_date, end_date, weight):
@@ -158,7 +158,7 @@ def darmowy_agent_logistyczny(transcript, df):
 
 # --- 3. POŁĄCZENIE I LOGOWANIE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
-st.sidebar.markdown("<h2 style='text-align: center;'>REJESTR SZTABOWY</h2>", unsafe_allow_html=True)
+st.sidebar.markdown("<h2 style='text-align: center; color: #fdf5e6;'>REJESTR SZTABOWY</h2>", unsafe_allow_html=True)
 user = st.sidebar.selectbox("👤 IDENTYFIKACJA:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
 user_pins = {"DUKIEL": "9607", "KACZMAREK": "1225"}
 
@@ -193,7 +193,8 @@ if "GROQ_API_KEY" in st.secrets:
             st.sidebar.info(f"Usłyszano: {trans.text}")
             rozkaz = darmowy_agent_logistyczny(trans.text, df_all)
             if rozkaz.get('akcja') == 'edytuj':
-                idx = df_all[df_all['Nazwa Targów'] == rozkaz['nazwa']].index
+                # Elastyczne szukanie nazwy
+                idx = df_all[df_all['Nazwa Targów'].str.contains(rozkaz['nazwa'], case=False, na=False)].index
                 if not idx.empty:
                     df_all.at[idx[0], rozkaz['pole']] = rozkaz['wartosc']
                     df_s = df_all.copy()
@@ -233,7 +234,9 @@ if menu == "🏠 DZIENNIK OPERACJI":
         t_end = c4.date_input("Powrót:", datetime.now() + timedelta(days=4), key="calc_end")
         calc = calculate_logistics(t_city, pd.to_datetime(t_start), pd.to_datetime(t_end), t_weight)
         if calc:
-            st.markdown(f'<div class="recommendation-box"><b>MELDUNEK:</b> Rekomendacja: {calc["name"]}<br><b>KOSZT:</b> € {calc["cost"]:.2f} netto{f"<div class="uk-alert">{calc["uk_info"]}</div>" if calc["uk_info"] else ""}</div>', unsafe_allow_html=True)
+            # FIX Linii 236: Użycie apostrofów wewnątrz cudzysłowów f-stringa
+            uk_html = f"<div class='uk-alert'>{calc['uk_info']}</div>" if calc['uk_info'] else ""
+            st.markdown(f'<div class="recommendation-box"><b>MELDUNEK:</b> Rekomendacja: {calc["name"]}<br><b>KOSZT:</b> € {calc["cost"]:.2f} netto{uk_html}</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     active_df = df_all[df_all["Status"] != "WRÓCIŁO"].copy()
@@ -296,11 +299,11 @@ elif menu == "📋 TABLICA ROZKAZÓW":
             st.markdown(f"<div class='task-card' style='border-left-color: #fbc02d'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>{t['Autor']}</small></div>", unsafe_allow_html=True)
 
     st.markdown("---")
-    my_notes = df_notes[df_notes["Autor"].str.upper() == user].copy()
+    my_notes = df_notes[df_notes["Autor"].astype(str).str.upper() == user].copy()
     edited_n = st.data_editor(my_notes, use_container_width=True, hide_index=True, num_rows="dynamic", column_config={"Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"])})
     
     if st.button("💾 ZAKTUALIZUJ TABLICĘ"):
-        others_n = df_notes[df_notes["Autor"].str.upper() != user].copy()
+        others_n = df_notes[df_notes["Autor"].astype(str).str.upper() != user].copy()
         combined = pd.concat([edited_n, others_n], ignore_index=True)
         combined["Data"] = pd.to_datetime(combined["Data"]).dt.strftime('%Y-%m-%d').fillna(datetime.now().strftime('%Y-%m-%d'))
         conn.update(worksheet="ogloszenia", data=combined)
