@@ -79,16 +79,6 @@ st.markdown("""
         margin-bottom: 20px;
         font-family: 'Special Elite', cursive;
     }
-    
-    .uk-alert {
-        color: #9b1c1c; 
-        background-color: #fdf2f2; 
-        padding: 10px;
-        border-radius: 5px; 
-        font-size: 0.85rem; 
-        margin-top: 10px; 
-        border-left: 4px solid #f05252;
-    }
 
     h1, h2, h3 {
         font-family: 'Special Elite', cursive !important;
@@ -97,13 +87,14 @@ st.markdown("""
         text-transform: uppercase;
         border-bottom: 2px solid #fdf5e6;
     }
-
-    div[data-baseweb="select"] > div {
-        background-color: #fdf5e6 !important;
-        color: #000 !important;
-    }
     </style>
     """, unsafe_allow_html=True)
+
+# --- SYSTEM RATUNKOWY DLA KLUCZA API ---
+# Przeszukuje główne sekrety ORAZ sekcję gsheets, jeśli klucz został tam wklejony przez pomyłkę
+raw_key = st.secrets.get("GROQ_API_KEY")
+nested_key = st.secrets.get("connections", {}).get("gsheets", {}).get("GROQ_API_KEY")
+FINAL_API_KEY = raw_key if raw_key else nested_key
 
 # --- 2. BAZA STAWEK (CENNIK 2026) ---
 EXP_RATES = {
@@ -144,27 +135,18 @@ def calculate_logistics(city, start_date, end_date, weight):
         results.append({"name": name, "cost": total, "uk_info": uk_details})
     return sorted(results, key=lambda x: x["cost"])[0] if results else None
 
-# --- AGENT AI (Zabezpieczony przed brakiem klucza) ---
 def darmowy_agent_logistyczny(transcript, df):
-    api_key = st.secrets.get("GROQ_API_KEY")
-    if not api_key:
-        return {"akcja": "brak_klucza"}
-        
-    client = Groq(api_key=api_key)
+    if not FINAL_API_KEY:
+        return {"akcja": "error", "message": "Brak klucza API"}
+    
+    client = Groq(api_key=FINAL_API_KEY)
     kontekst = df[['Nazwa Targów', 'Status', 'Logistyk']].to_string()
     
     prompt = f"""
     Jesteś asystentem logistyki SQM. Analizujesz mowę i bazę danych.
     BAZA: {kontekst}
     MOWA: "{transcript}"
-    DATA DZISIEJSZA: {datetime.now().strftime('%Y-%m-%d')}
-
-    ZADANIE:
-    1. Jeśli mowa o edycji (np. "Paryż wrócił", "Zmień status Lyonu na w trakcie"):
-       Zwróć JSON: {{"akcja": "edytuj", "nazwa": "dokładna nazwa z bazy", "pole": "Status", "wartosc": "WRÓCIŁO" lub "W TRAKCIE" lub "OCZEKUJE"}}
-    2. Jeśli mowa o dodaniu (np. "Dodaj targi Berlin od 10 do 15 maja"):
-       Zwróć JSON: {{"akcja": "dodaj", "dane": {{"Nazwa Targów": "Berlin", "Pierwszy wyjazd": "2026-05-10", "Data końca": "2026-05-15", "Status": "OCZEKUJE"}}}}
-    
+    ZADANIE: Na podstawie mowy zwróć JSON: {{"akcja": "edytuj", "nazwa": "...", "pole": "...", "wartosc": "..."}} lub {{"akcja": "dodaj", "dane": {{...}}}}
     Zwróć TYLKO czysty JSON.
     """
     try:
@@ -174,12 +156,18 @@ def darmowy_agent_logistyczny(transcript, df):
             response_format={ "type": "json_object" }
         )
         return json.loads(chat_completion.choices[0].message.content)
-    except Exception as e:
-        return {"akcja": "error", "message": str(e)}
+    except:
+        return {"akcja": "error"}
 
 # --- 3. POŁĄCZENIE I LOGOWANIE ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 st.sidebar.markdown("<h2 style='text-align: center; color: #fdf5e6;'>REJESTR SZTABOWY</h2>", unsafe_allow_html=True)
+
+# DIAGNOSTYKA (widoczna tylko jeśli klucza brakuje)
+if not FINAL_API_KEY:
+    st.sidebar.error("⚠️ DIAGNOSTYKA: Klucz nie został wykryty.")
+    st.sidebar.write("Dostępne sekcje w Secrets:", list(st.secrets.keys()))
+
 user = st.sidebar.selectbox("👤 IDENTYFIKACJA:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
 user_pins = {"DUKIEL": "9607", "KACZMAREK": "1225"}
 
@@ -203,200 +191,132 @@ try:
 
     df_notes = conn.read(worksheet="ogloszenia", ttl=300).dropna(how='all')
     df_notes["Data"] = pd.to_datetime(df_notes["Data"], errors='coerce')
-    df_notes["Autor"] = df_notes["Autor"].astype(str).str.upper()
 except Exception:
-    st.error("Błąd połączenia z bazą danych.")
+    st.error("Błąd połączenia z bazą danych Google Sheets.")
     st.stop()
 
 # --- TERMINAL GŁOSOWY ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("🎙️ TERMINAL GŁOSOWY")
 
-# Sprawdzenie obecności klucza w secrets przed uruchomieniem mikrofonu
-if "GROQ_API_KEY" not in st.secrets:
-    st.sidebar.warning("⚠️ Brak klucza GROQ_API_KEY w panelu Secrets. Terminal głosowy nieaktywny.")
+if not FINAL_API_KEY:
+    st.sidebar.warning("⚠️ Terminal głosowy nieaktywny - brak klucza API.")
 else:
     audio = mic_recorder(start_prompt="NADAJ MELDUNEK", stop_prompt="KONIEC", key='mic_pro')
-
     if audio:
         try:
-            client = Groq(api_key=st.secrets["GROQ_API_KEY"])
-            with st.spinner("Przetwarzanie rozkazu..."):
-                with open("temp_audio.wav", "wb") as f:
-                    f.write(audio['bytes'])
-                with open("temp_audio.wav", "rb") as file:
-                    transcription = client.audio.transcriptions.create(file=file, model="whisper-large-v3-turbo")
-                
-                st.sidebar.info(f"Usłyszano: {transcription.text}")
-                rozkaz = darmowy_agent_logistyczny(transcription.text, df_all)
-
-                if rozkaz.get('akcja') == 'edytuj':
-                    idx = df_all[df_all['Nazwa Targów'] == rozkaz['nazwa']].index
-                    if not idx.empty:
-                        df_all.at[idx[0], rozkaz['pole']] = rozkaz['wartosc']
-                        # Formatowanie dat przed zapisem
-                        df_to_save = df_all.copy()
-                        df_to_save["Pierwszy wyjazd"] = df_to_save["Pierwszy wyjazd"].dt.strftime('%Y-%m-%d').fillna('')
-                        df_to_save["Data końca"] = df_to_save["Data końca"].dt.strftime('%Y-%m-%d').fillna('')
-                        conn.update(worksheet="targi", data=df_to_save)
-                        st.cache_data.clear()
-                        st.sidebar.success(f"Zaktualizowano: {rozkaz['nazwa']}")
-                        st.rerun()
-                
-                elif rozkaz.get('akcja') == 'dodaj':
-                    nowy_wpis = pd.DataFrame([rozkaz['dane']])
-                    nowy_wpis['Logistyk'] = user
-                    nowy_wpis['Sloty'] = "NIE"
-                    df_updated = pd.concat([df_all, nowy_wpis], ignore_index=True)
-                    df_updated["Pierwszy wyjazd"] = pd.to_datetime(df_updated["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d').fillna('')
-                    df_updated["Data końca"] = pd.to_datetime(df_updated["Data końca"]).dt.strftime('%Y-%m-%d').fillna('')
-                    conn.update(worksheet="targi", data=df_updated)
+            client = Groq(api_key=FINAL_API_KEY)
+            with open("temp_audio.wav", "wb") as f:
+                f.write(audio['bytes'])
+            with open("temp_audio.wav", "rb") as file:
+                transcription = client.audio.transcriptions.create(file=file, model="whisper-large-v3-turbo")
+            
+            st.sidebar.info(f"Usłyszano: {transcription.text}")
+            rozkaz = darmowy_agent_logistyczny(transcription.text, df_all)
+            
+            if rozkaz.get('akcja') == 'edytuj':
+                idx = df_all[df_all['Nazwa Targów'] == rozkaz['nazwa']].index
+                if not idx.empty:
+                    df_all.at[idx[0], rozkaz['pole']] = rozkaz['wartosc']
+                    df_to_save = df_all.copy()
+                    df_to_save["Pierwszy wyjazd"] = df_to_save["Pierwszy wyjazd"].dt.strftime('%Y-%m-%d').fillna('')
+                    df_to_save["Data końca"] = df_to_save["Data końca"].dt.strftime('%Y-%m-%d').fillna('')
+                    conn.update(worksheet="targi", data=df_to_save)
                     st.cache_data.clear()
-                    st.sidebar.success("Dodano nowy projekt!")
                     st.rerun()
+            elif rozkaz.get('akcja') == 'dodaj':
+                nowy_wpis = pd.DataFrame([rozkaz['dane']])
+                nowy_wpis['Logistyk'] = user
+                df_updated = pd.concat([df_all, nowy_wpis], ignore_index=True)
+                df_updated["Pierwszy wyjazd"] = pd.to_datetime(df_updated["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d').fillna('')
+                df_updated["Data końca"] = pd.to_datetime(df_updated["Data końca"]).dt.strftime('%Y-%m-%d').fillna('')
+                conn.update(worksheet="targi", data=df_updated)
+                st.cache_data.clear()
+                st.rerun()
         except Exception as e:
             st.sidebar.error(f"Błąd AI: {e}")
 
-# --- 5. MENU REJESTRÓW ---
+# --- 5. MENU GŁÓWNE ---
 menu = st.sidebar.radio("PROTOKÓŁ:", ["🏠 DZIENNIK OPERACJI", "📅 KALENDARZ", "📊 WYKRES GANTA", "📋 TABLICA ROZKAZÓW"])
 
-# --- MODUŁ 1: DZIENNIK OPERACJI ---
 if menu == "🏠 DZIENNIK OPERACJI":
     st.title("📑 Bieżący Dziennik Transportów")
     
-    with st.expander("➕ NOWY MELDUNEK (DODAJ TARGI)", expanded=False):
-        with st.form("new_entry_form"):
-            f_name = st.text_input("Nazwa Targów / Projektu:")
-            c1, c2, c3 = st.columns(3)
-            f_start = c1.date_input("Start transportu:", datetime.now())
-            f_end = c2.date_input("Koniec transportu:", datetime.now() + timedelta(days=5))
-            f_status = c3.selectbox("Status początkowy:", ["OCZEKUJE", "W TRAKCIE"])
-            
-            if st.form_submit_button("ZATWIERDŹ I DOPISZ DO AKT"):
-                new_data = pd.DataFrame([{
-                    "Nazwa Targów": f_name,
-                    "Pierwszy wyjazd": f_start.strftime('%Y-%m-%d'),
-                    "Data końca": f_end.strftime('%Y-%m-%d'),
-                    "Logistyk": user,
-                    "Status": f_status,
-                    "Sloty": "NIE"
-                }])
-                updated_df = pd.concat([df_all, new_data], ignore_index=True)
-                updated_df["Pierwszy wyjazd"] = pd.to_datetime(updated_df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d').fillna('')
-                updated_df["Data końca"] = pd.to_datetime(updated_df["Data końca"]).dt.strftime('%Y-%m-%d').fillna('')
-                conn.update(worksheet="targi", data=updated_df)
-                st.cache_data.clear()
-                st.rerun()
-
+    # Kalkulator
     with st.expander("🧮 Kalkulator Norm Zaopatrzenia 2026", expanded=False):
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
-        t_city = c1.selectbox("Kierunek:", sorted(list(EXP_RATES["WŁASNY SQM BUS"].keys())), key="calc_city")
-        t_weight = c2.number_input("Masa (kg):", min_value=0, value=500, step=100)
-        t_start = c3.date_input("Start:", datetime.now(), key="calc_start")
-        t_end = c4.date_input("Powrót:", datetime.now() + timedelta(days=4), key="calc_end")
+        t_city = c1.selectbox("Kierunek:", sorted(list(EXP_RATES["WŁASNY SQM BUS"].keys())))
+        t_weight = c2.number_input("Masa (kg):", min_value=0, value=500)
+        t_start = c3.date_input("Start:", datetime.now())
+        t_end = c4.date_input("Powrót:", datetime.now() + timedelta(days=4))
         
         calc = calculate_logistics(t_city, pd.to_datetime(t_start), pd.to_datetime(t_end), t_weight)
         if calc:
             st.markdown(f"""
             <div class="recommendation-box">
-                <b>MELDUNEK:</b> Rekomendowany transport: {calc['name']}<br>
-                <b>KOSZT SZACUNKOWY:</b> <span style="font-size: 1.3rem;">€ {calc['cost']:.2f} netto</span>
-                {f'<div class="uk-alert"><b>Doliczono koszty UK:</b><br>{calc["uk_info"]}</div>' if calc["uk_info"] else ""}
+                <b>REKOMENDACJA:</b> {calc['name']}<br>
+                <b>KOSZT SZACUNKOWY:</b> € {calc['cost']:.2f} netto<br>
+                {f'<small>{calc["uk_info"]}</small>' if calc["uk_info"] else ""}
             </div>
             """, unsafe_allow_html=True)
 
-    st.markdown("---")
-    active_mask = df_all["Status"] != "WRÓCIŁO"
-    active_df = df_all[active_mask].copy()
-
-    col_config = {
-        "Status": st.column_config.SelectboxColumn("Status", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"], required=True),
-        "Logistyk": st.column_config.SelectboxColumn("Logistyk", options=["DUKIEL", "KACZMAREK"], required=True),
+    st.subheader(f"✍️ TWOJA SEKCJA: {user}")
+    my_tasks = df_all[df_all["Logistyk"] == user].copy()
+    
+    # Konfiguracja kolumn dla edytora
+    col_cfg = {
+        "Status": st.column_config.SelectboxColumn("Status", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"]),
         "Sloty": st.column_config.SelectboxColumn("Sloty", options=["TAK", "NIE", "NIE POTRZEBA"]),
         "Pierwszy wyjazd": st.column_config.DateColumn("Start"),
         "Data końca": st.column_config.DateColumn("Powrót")
     }
-
-    st.subheader(f"✍️ TWOJA SEKCJA: {user}")
-    search_me = st.text_input(f"🔍 Szukaj w swoich projektach:", key="search_me").lower()
-    my_tasks = active_df[active_df["Logistyk"] == user].copy()
-    if search_me:
-        my_tasks = my_tasks[my_tasks.astype(str).apply(lambda x: x.str.lower().str.contains(search_me)).any(axis=1)]
     
-    edited_my = st.data_editor(my_tasks, use_container_width=True, hide_index=True, column_config=col_config, key="editor_my", num_rows="dynamic")
+    edited_my = st.data_editor(my_tasks, use_container_width=True, hide_index=True, column_config=col_cfg)
 
     if st.button("💾 ZAPISZ MOJE PROJEKTY"):
-        others = df_all[~df_all.index.isin(my_tasks.index)].copy()
+        others = df_all[df_all["Logistyk"] != user].copy()
         final_df = pd.concat([edited_my, others], ignore_index=True).dropna(subset=["Nazwa Targów"])
         for col in ["Pierwszy wyjazd", "Data końca"]:
-            if col in final_df.columns:
-                final_df[col] = pd.to_datetime(final_df[col]).dt.strftime('%Y-%m-%d').fillna('')
+            final_df[col] = pd.to_datetime(final_df[col]).dt.strftime('%Y-%m-%d').fillna('')
         conn.update(worksheet="targi", data=final_df)
         st.cache_data.clear()
         st.success("Baza zaktualizowana.")
         st.rerun()
 
-    st.markdown("---")
-    partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
-    st.subheader(f"👁️ PODGLĄD PARTNERA: {partner}")
-    partner_tasks = active_df[active_df["Logistyk"] == partner].copy()
-    st.dataframe(partner_tasks, use_container_width=True, hide_index=True)
-
-# --- MODUŁ 2: KALENDARZ ---
 elif menu == "📅 KALENDARZ":
     st.title("📅 Grafik Wyjazdów")
     events = []
-    for _, r in df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna())].iterrows():
-        color = "#2b2f11" if r["Logistyk"] == "DUKIEL" else "#8b0000"
+    for _, r in df_all[df_all["Pierwszy wyjazd"].notna()].iterrows():
         events.append({
             "title": f"[{r['Logistyk']}] {r['Nazwa Targów']}",
-            "start": r["Pierwszy wyjazd"].strftime("%Y-%m-%d") if isinstance(r["Pierwszy wyjazd"], datetime) else str(r["Pierwszy wyjazd"]),
-            "end": (r["Data końca"] + pd.Timedelta(days=1)).strftime("%Y-%m-%d") if isinstance(r["Data końca"], datetime) else str(r["Data końca"]),
-            "backgroundColor": color
+            "start": r["Pierwszy wyjazd"].strftime("%Y-%m-%d"),
+            "end": (r["Data końca"] + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
+            "backgroundColor": "#2b2f11" if r["Logistyk"] == "DUKIEL" else "#8b0000"
         })
     calendar(events=events, options={"locale": "pl", "firstDay": 1})
 
-# --- MODUŁ 3: WYKRES GANTA ---
 elif menu == "📊 WYKRES GANTA":
     st.title("📊 Harmonogram Operacyjny")
-    df_viz = df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna()) & (df_all["Data końca"].notna())].copy()
+    df_viz = df_all[df_all["Pierwszy wyjazd"].notna() & df_all["Data końca"].notna()].copy()
     if not df_viz.empty:
         fig = px.timeline(df_viz, x_start="Pierwszy wyjazd", x_end="Data końca", y="Nazwa Targów", 
                           color="Logistyk", color_discrete_map={"DUKIEL": "#4b5320", "KACZMAREK": "#8b0000"})
         fig.update_yaxes(autorange="reversed")
-        fig.update_layout(paper_bgcolor="#fdf5e6", plot_bgcolor="#ffffff", font_family="Special Elite")
         st.plotly_chart(fig, use_container_width=True)
 
-# --- MODUŁ 4: TABLICA ROZKAZÓW ---
 elif menu == "📋 TABLICA ROZKAZÓW":
-    st.title("📋 Meldunki i Rozkazy")
+    st.title("📋 Meldunki i Ogłoszenia")
     
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("### 🔴 DO ZAŁATWIENIA")
-        todo = df_notes[df_notes["Status"] == "DO ZROBIENIA"]
-        for _, t in todo.iterrows():
-            st.markdown(f"<div class='task-card' style='border-left-color: #8b0000'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>{t['Autor']}</small></div>", unsafe_allow_html=True)
-    with c2:
-        st.markdown("### 🟡 W REALIZACJI")
-        doing = df_notes[df_notes["Status"] == "W TRAKCIE"]
-        for _, t in doing.iterrows():
-            st.markdown(f"<div class='task-card' style='border-left-color: #fbc02d'><b>{t.get('Tytul', 'Zadanie')}</b><br><small>{t['Autor']}</small></div>", unsafe_allow_html=True)
-
+    with st.form("new_note"):
+        st.subheader("Nowy Rozkaz")
+        n_title = st.text_input("Tytuł:")
+        n_status = st.selectbox("Status:", ["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"])
+        if st.form_submit_button("DODAJ DO TABLICY"):
+            new_note = pd.DataFrame([{"Data": datetime.now().strftime('%Y-%m-%d'), "Autor": user, "Tytul": n_title, "Status": n_status}])
+            updated_notes = pd.concat([df_notes, new_note], ignore_index=True)
+            conn.update(worksheet="ogloszenia", data=updated_notes)
+            st.cache_data.clear()
+            st.rerun()
+            
     st.markdown("---")
-    st.subheader("🖋️ Twoje Zadania")
-    my_notes = df_notes[df_notes["Autor"] == user].copy()
-    edited_n = st.data_editor(my_notes, use_container_width=True, hide_index=True, num_rows="dynamic",
-                              column_config={"Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"], required=True)})
-    
-    if st.button("💾 ZAKTUALIZUJ TABLICĘ"):
-        new_my = edited_n.copy()
-        new_my["Autor"] = user
-        others_n = df_notes[df_notes["Autor"] != user].copy()
-        combined = pd.concat([new_my, others_n], ignore_index=True)
-        combined["Data"] = combined["Data"].fillna(datetime.now())
-        combined["Data"] = pd.to_datetime(combined["Data"]).dt.strftime('%Y-%m-%d').fillna('')
-        conn.update(worksheet="ogloszenia", data=combined)
-        st.cache_data.clear()
-        st.success("Tablica zaktualizowana.")
-        st.rerun()
+    st.dataframe(df_notes.sort_values("Data", ascending=False), use_container_width=True, hide_index=True)
