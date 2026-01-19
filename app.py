@@ -178,10 +178,6 @@ menu = st.sidebar.radio("PROTOKÓŁ:", ["🏠 DZIENNIK OPERACJI", "📅 KALENDAR
 if menu == "🏠 DZIENNIK OPERACJI":
     st.title("📑 Bieżący Dziennik Transportów")
     
-    # --- WYSZUKIWARKA ---
-    search_q = st.text_input("🔍 SZUKAJ (Wpisz nazwę targów, status lub logistyka):", "").lower()
-
-    # --- FORMULARZ DODAWANIA ---
     with st.expander("➕ NOWY MELDUNEK (DODAJ TARGI)", expanded=False):
         with st.form("new_entry_form"):
             f_name = st.text_input("Nazwa Targów / Projektu:")
@@ -202,13 +198,11 @@ if menu == "🏠 DZIENNIK OPERACJI":
                 updated_df = pd.concat([df_all, new_data], ignore_index=True)
                 updated_df["Pierwszy wyjazd"] = pd.to_datetime(updated_df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d').fillna('')
                 updated_df["Data końca"] = pd.to_datetime(updated_df["Data końca"]).dt.strftime('%Y-%m-%d').fillna('')
-                
                 conn.update(worksheet="targi", data=updated_df)
                 st.cache_data.clear()
                 st.success(f"Dodano projekt: {f_name}")
                 st.rerun()
 
-    # --- KALKULATOR ---
     with st.expander("🧮 Kalkulator Norm Zaopatrzenia 2026", expanded=False):
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
         t_city = c1.selectbox("Kierunek:", sorted(list(EXP_RATES["WŁASNY SQM BUS"].keys())), key="calc_city")
@@ -228,16 +222,11 @@ if menu == "🏠 DZIENNIK OPERACJI":
 
     st.markdown("---")
     
-    # --- PRZYGOTOWANIE DANYCH DO TABELI ---
     active_mask = df_all["Status"] != "WRÓCIŁO"
     active_df = df_all[active_mask].copy()
-    
-    # Aplikacja wyszukiwarki
-    if search_q:
-        active_df = active_df[active_df.astype(str).apply(lambda x: x.str.lower().str.contains(search_q)).any(axis=1)]
+    archived_df = df_all[~active_mask].copy()
 
-    st.subheader(f"✍️ Rejestr Operacyjny (Użytkownik: {user})")
-    
+    # KONFIGURACJA KOLUMN DLA EDYTORA
     col_config = {
         "Status": st.column_config.SelectboxColumn("Status", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"], required=True),
         "Logistyk": st.column_config.SelectboxColumn("Logistyk", options=["DUKIEL", "KACZMAREK"], required=True),
@@ -245,29 +234,44 @@ if menu == "🏠 DZIENNIK OPERACJI":
         "Pierwszy wyjazd": st.column_config.DateColumn("Start"),
         "Data końca": st.column_config.DateColumn("Powrót")
     }
+
+    # SEKCJA OSOBISTA (Z WYSZUKIWARKĄ I SORTOWANIEM)
+    st.subheader(f"✍️ Rejestr Osobisty: {user}")
+    search_me = st.text_input(f"🔍 Szukaj w swoich projektach ({user}):", key="search_me").lower()
     
-    # Tabela z natywnym sortowaniem (kliknięcie w nagłówek)
-    edited_active = st.data_editor(active_df, use_container_width=True, hide_index=True, column_config=col_config, key="editor_ops", num_rows="dynamic")
+    my_tasks = active_df[active_df["Logistyk"] == user].copy()
+    if search_me:
+        my_tasks = my_tasks[my_tasks.astype(str).apply(lambda x: x.str.lower().str.contains(search_me)).any(axis=1)]
+    
+    edited_my = st.data_editor(my_tasks, use_container_width=True, hide_index=True, column_config=col_config, key="editor_ops", num_rows="dynamic")
 
     if st.button("💾 ZAPISZ I ZALAKUJ AKTA"):
-        # Połącz edytowane dane z resztą (tymi których nie było w widoku szukania/aktywnych)
-        others = df_all[~df_all.index.isin(active_df.index)].copy()
-        
-        # Formatowanie dat we wszystkich częściach
-        for df in [edited_active, others]:
-            if not df.empty:
+        others = df_all[~df_all.index.isin(my_tasks.index)].copy()
+        for df in [edited_my, others]:
+            if "Pierwszy wyjazd" in df.columns:
                 df["Pierwszy wyjazd"] = pd.to_datetime(df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d').fillna('')
-                df["Data koniec"] = pd.to_datetime(df["Data końca"]).dt.strftime('%Y-%m-%d').fillna('')
-        
-        final_df = pd.concat([edited_active, others], ignore_index=True).dropna(subset=["Nazwa Targów"])
-        
+            if "Data końca" in df.columns:
+                df["Data końca"] = pd.to_datetime(df["Data końca"]).dt.strftime('%Y-%m-%d').fillna('')
+        final_df = pd.concat([edited_my, others], ignore_index=True).dropna(subset=["Nazwa Targów"])
         conn.update(worksheet="targi", data=final_df)
         st.cache_data.clear()
-        st.success("Dane zapisane pomyślnie.")
+        st.success("Zmiany zapisane.")
         st.rerun()
 
-    with st.expander("📁 Zobacz Archiwum (Status: WRÓCIŁO)"):
-        archived_df = df_all[df_all["Status"] == "WRÓCIŁO"].copy()
+    st.markdown("---")
+    
+    # PODGLĄD PARTNERA (Z WYSZUKIWARKĄ I SORTOWANIEM)
+    partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
+    st.subheader(f"👁️ Podgląd Sekcji Sąsiedniej (Tylko odczyt: {partner})")
+    search_p = st.text_input(f"🔍 Szukaj w projektach partnera ({partner}):", key="search_partner").lower()
+    
+    partner_tasks = active_df[active_df["Logistyk"] == partner].copy()
+    if search_p:
+        partner_tasks = partner_tasks[partner_tasks.astype(str).apply(lambda x: x.str.lower().str.contains(search_p)).any(axis=1)]
+    
+    st.dataframe(partner_tasks, use_container_width=True, hide_index=True)
+
+    with st.expander("📁 Zobacz Archiwum (WRÓCIŁO)"):
         st.dataframe(archived_df, use_container_width=True, hide_index=True)
 
 # --- MODUŁ 2: KALENDARZ ---
@@ -317,7 +321,6 @@ elif menu == "📋 TABLICA ROZKAZÓW":
     st.markdown("---")
     st.subheader("🖋️ Zarządzanie Zadaniami")
     my_notes = df_notes[df_notes["Autor"] == user].copy()
-    
     edited_n = st.data_editor(my_notes, use_container_width=True, hide_index=True, num_rows="dynamic",
                               column_config={"Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"], required=True)})
     
@@ -325,14 +328,11 @@ elif menu == "📋 TABLICA ROZKAZÓW":
         new_my = edited_n.copy()
         new_my["Autor"] = user
         new_my.loc[new_my["Status"] == "WYKONANE", "Data"] = new_my["Data"].fillna(datetime.now())
-        
         others_n = df_notes[df_notes["Autor"] != user].copy()
         combined = pd.concat([new_my, others_n], ignore_index=True)
         combined["Data"] = pd.to_datetime(combined["Data"], errors='coerce')
-        
         final_notes = combined[~((combined["Status"] == "WYKONANE") & (combined["Data"] < limit_date))].copy()
         final_notes["Data"] = final_notes["Data"].dt.strftime('%Y-%m-%d').fillna('')
-        
         conn.update(worksheet="ogloszenia", data=final_notes)
         st.cache_data.clear()
         st.success("Tablica zadań zaktualizowana.")
