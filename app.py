@@ -158,11 +158,14 @@ if user != "Wybierz...":
 if not is_authenticated:
     st.stop()
 
-# --- 4. POBIERANIE DANYCH ---
+# --- 4. POBIERANIE DANYCH (Z SORTOWANIEM DOMYŚLNYM) ---
 try:
     df_all = conn.read(worksheet="targi", ttl=300).dropna(subset=["Nazwa Targów"])
     df_all["Pierwszy wyjazd"] = pd.to_datetime(df_all["Pierwszy wyjazd"], errors='coerce')
     df_all["Data końca"] = pd.to_datetime(df_all["Data końca"], errors='coerce')
+    
+    # Domyślne sortowanie od najwcześniejszego transportu
+    df_all = df_all.sort_values(by="Pierwszy wyjazd", ascending=True)
 
     df_notes = conn.read(worksheet="ogloszenia", ttl=300).dropna(how='all')
     df_notes["Data"] = pd.to_datetime(df_notes["Data"], errors='coerce')
@@ -224,9 +227,7 @@ if menu == "🏠 DZIENNIK OPERACJI":
     
     active_mask = df_all["Status"] != "WRÓCIŁO"
     active_df = df_all[active_mask].copy()
-    archived_df = df_all[~active_mask].copy()
 
-    # KONFIGURACJA KOLUMN DLA EDYTORA
     col_config = {
         "Status": st.column_config.SelectboxColumn("Status", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"], required=True),
         "Logistyk": st.column_config.SelectboxColumn("Logistyk", options=["DUKIEL", "KACZMAREK"], required=True),
@@ -235,35 +236,37 @@ if menu == "🏠 DZIENNIK OPERACJI":
         "Data końca": st.column_config.DateColumn("Powrót")
     }
 
-    # SEKCJA OSOBISTA (Z WYSZUKIWARKĄ I SORTOWANIEM)
-    st.subheader(f"✍️ Rejestr Osobisty: {user}")
-    search_me = st.text_input(f"🔍 Szukaj w swoich projektach ({user}):", key="search_me").lower()
+    # --- TWOJA SEKCJA ---
+    st.subheader(f"✍️ TWOJA SEKCJA: {user}")
+    search_me = st.text_input(f"🔍 Szukaj w swoich projektach:", key="search_me").lower()
     
     my_tasks = active_df[active_df["Logistyk"] == user].copy()
     if search_me:
         my_tasks = my_tasks[my_tasks.astype(str).apply(lambda x: x.str.lower().str.contains(search_me)).any(axis=1)]
     
-    edited_my = st.data_editor(my_tasks, use_container_width=True, hide_index=True, column_config=col_config, key="editor_ops", num_rows="dynamic")
+    # Sortowanie w tabeli jest możliwe poprzez kliknięcie w nagłówek "Start"
+    edited_my = st.data_editor(my_tasks, use_container_width=True, hide_index=True, column_config=col_config, key="editor_my", num_rows="dynamic")
 
-    if st.button("💾 ZAPISZ I ZALAKUJ AKTA"):
+    if st.button("💾 ZAPISZ MOJE PROJEKTY"):
         others = df_all[~df_all.index.isin(my_tasks.index)].copy()
-        for df in [edited_my, others]:
-            if "Pierwszy wyjazd" in df.columns:
-                df["Pierwszy wyjazd"] = pd.to_datetime(df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d').fillna('')
-            if "Data końca" in df.columns:
-                df["Data końca"] = pd.to_datetime(df["Data końca"]).dt.strftime('%Y-%m-%d').fillna('')
         final_df = pd.concat([edited_my, others], ignore_index=True).dropna(subset=["Nazwa Targów"])
+        
+        # Zabezpieczenie formatu daty przed wysyłką do GSheets
+        for col in ["Pierwszy wyjazd", "Data końca"]:
+            if col in final_df.columns:
+                final_df[col] = pd.to_datetime(final_df[col]).dt.strftime('%Y-%m-%d').fillna('')
+        
         conn.update(worksheet="targi", data=final_df)
         st.cache_data.clear()
-        st.success("Zmiany zapisane.")
+        st.success("Aktualizacja bazy zakończona pomyślnie.")
         st.rerun()
 
     st.markdown("---")
     
-    # PODGLĄD PARTNERA (Z WYSZUKIWARKĄ I SORTOWANIEM)
+    # --- PODGLĄD PARTNERA ---
     partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
-    st.subheader(f"👁️ Podgląd Sekcji Sąsiedniej (Tylko odczyt: {partner})")
-    search_p = st.text_input(f"🔍 Szukaj w projektach partnera ({partner}):", key="search_partner").lower()
+    st.subheader(f"👁️ PODGLĄD PARTNERA: {partner}")
+    search_p = st.text_input(f"🔍 Szukaj u partnera:", key="search_partner").lower()
     
     partner_tasks = active_df[active_df["Logistyk"] == partner].copy()
     if search_p:
@@ -271,7 +274,8 @@ if menu == "🏠 DZIENNIK OPERACJI":
     
     st.dataframe(partner_tasks, use_container_width=True, hide_index=True)
 
-    with st.expander("📁 Zobacz Archiwum (WRÓCIŁO)"):
+    with st.expander("📁 ARCHIWUM (Status: WRÓCIŁO)"):
+        archived_df = df_all[df_all["Status"] == "WRÓCIŁO"].copy()
         st.dataframe(archived_df, use_container_width=True, hide_index=True)
 
 # --- MODUŁ 2: KALENDARZ ---
