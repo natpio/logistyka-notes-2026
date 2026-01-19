@@ -178,28 +178,32 @@ menu = st.sidebar.radio("PROTOKÓŁ:", ["🏠 DZIENNIK OPERACJI", "📅 KALENDAR
 if menu == "🏠 DZIENNIK OPERACJI":
     st.title("📑 Bieżący Dziennik Transportów")
     
-    # --- NOWA SEKCJA: DODAWANIE WPISU ---
+    # --- FORMULARZ BEZ NOWYCH KOLUMN ---
     with st.expander("➕ NOWY MELDUNEK (DODAJ TARGI)", expanded=False):
         with st.form("new_entry_form"):
-            c1, c2 = st.columns(2)
-            f_name = c1.text_input("Nazwa Targów / Projektu:")
-            f_city = c2.selectbox("Kierunek (Miasto):", sorted(list(EXP_RATES["WŁASNY SQM BUS"].keys())))
-            c3, c4, c5 = st.columns(3)
-            f_start = c3.date_input("Start transportu:", datetime.now())
-            f_end = c4.date_input("Koniec transportu:", datetime.now() + timedelta(days=5))
-            f_status = c5.selectbox("Status początkowy:", ["OCZEKUJE", "W TRAKCIE"])
+            f_name = st.text_input("Nazwa Targów / Projektu:")
+            c1, c2, c3 = st.columns(3)
+            f_start = c1.date_input("Start transportu:", datetime.now())
+            f_end = c2.date_input("Koniec transportu:", datetime.now() + timedelta(days=5))
+            f_status = c3.selectbox("Status początkowy:", ["OCZEKUJE", "W TRAKCIE"])
             
             if st.form_submit_button("ZATWIERDŹ I DOPISZ DO AKT"):
+                # Tworzymy wiersz używając wyłącznie istniejących kolumn z Twojej bazy
                 new_data = pd.DataFrame([{
                     "Nazwa Targów": f_name,
-                    "Miasto": f_city,
                     "Pierwszy wyjazd": f_start.strftime('%Y-%m-%d'),
                     "Data końca": f_end.strftime('%Y-%m-%d'),
                     "Logistyk": user,
                     "Status": f_status,
                     "Sloty": "NIE"
                 }])
+                # Używamy pd.concat, aby dopisać nowy wiersz do reszty danych
                 updated_df = pd.concat([df_all, new_data], ignore_index=True)
+                
+                # Konwersja dat przed wysyłką do GSheets, aby uniknąć błędów formatowania
+                updated_df["Pierwszy wyjazd"] = pd.to_datetime(updated_df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d').fillna('')
+                updated_df["Data końca"] = pd.to_datetime(updated_df["Data końca"]).dt.strftime('%Y-%m-%d').fillna('')
+                
                 conn.update(worksheet="targi", data=updated_df)
                 st.cache_data.clear()
                 st.success(f"Dodano projekt: {f_name}")
@@ -239,13 +243,10 @@ if menu == "🏠 DZIENNIK OPERACJI":
         "Data końca": st.column_config.DateColumn("Powrót")
     }
     
-    # Dodano num_rows="dynamic", aby można było dodawać wpisy także bezpośrednio w tabeli
     edited_my = st.data_editor(my_tasks, use_container_width=True, hide_index=True, column_config=col_config, key="editor_ops", num_rows="dynamic")
 
     if st.button("💾 ZAPISZ I ZALAKUJ AKTA"):
         others = df_all[~df_all.index.isin(my_tasks.index)].copy()
-        
-        # Przygotowanie danych do zapisu
         for df in [edited_my, others]:
             if "Pierwszy wyjazd" in df.columns:
                 df["Pierwszy wyjazd"] = pd.to_datetime(df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d').fillna('')
@@ -253,7 +254,6 @@ if menu == "🏠 DZIENNIK OPERACJI":
                 df["Data końca"] = pd.to_datetime(df["Data końca"]).dt.strftime('%Y-%m-%d').fillna('')
             
         final_df = pd.concat([edited_my, others], ignore_index=True)
-        # Upewnienie się, że nie zapisujemy pustych wierszy bez nazwy targów
         final_df = final_df.dropna(subset=["Nazwa Targów"])
         
         conn.update(worksheet="targi", data=final_df)
@@ -325,14 +325,12 @@ elif menu == "📋 TABLICA ROZKAZÓW":
     if st.button("💾 ZAKTUALIZUJ TABLICĘ"):
         new_my = edited_n.copy()
         new_my["Autor"] = user
-        # Automatyczna data dla wykonanych 
         new_my.loc[new_my["Status"] == "WYKONANE", "Data"] = new_my["Data"].fillna(datetime.now())
         
         others_n = df_notes[df_notes["Autor"] != user].copy()
         combined = pd.concat([new_my, others_n], ignore_index=True)
         combined["Data"] = pd.to_datetime(combined["Data"], errors='coerce')
         
-        # Usuń wykonane starsze niż 90 dni 
         final_notes = combined[~((combined["Status"] == "WYKONANE") & (combined["Data"] < limit_date))].copy()
         final_notes["Data"] = final_notes["Data"].dt.strftime('%Y-%m-%d').fillna('')
         
