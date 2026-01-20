@@ -10,6 +10,7 @@ import uuid
 # --- 1. KONFIGURACJA WIZUALNA SZTABU ---
 st.set_page_config(page_title="SZTAB LOGISTYKI SQM", layout="wide", initial_sidebar_state="expanded")
 
+# Wstrzyknięcie pełnego arkusza stylów
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Special+Elite&display=swap');
@@ -68,16 +69,10 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. POŁĄCZENIE I NADPISANIE BŁĘDÓW RENDEROWANIA ---
+# --- 2. POŁĄCZENIE Z BAZĄ ---
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# Funkcja czyszcząca stan edytora w razie awarii
-def reset_editor():
-    for key in st.session_state.keys():
-        if "edit_targi" in key or "ed_o" in key:
-            del st.session_state[key]
-    st.rerun()
-
+# --- 3. LOGIKA OPERATORA I DOSTĘPU ---
 st.sidebar.markdown("<h2 style='text-align: center;'>REJESTR SZTABOWY</h2>", unsafe_allow_html=True)
 user = st.sidebar.selectbox("👤 OPERATOR:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
 user_pins = {"DUKIEL": "9607", "KACZMAREK": "1225"}
@@ -91,43 +86,43 @@ if input_pin != user_pins.get(user):
     if input_pin: st.sidebar.error("❌ BŁĘDNY PIN")
     st.stop()
 
-# PRZYCISK RATUNKOWY (jeśli błąd removeChild powróci)
-if st.sidebar.button("⚠️ RESETUJ WIDOK (RATUNEK)"):
-    reset_editor()
-
-# --- 3. FUNKCJE DANYCH ---
-def load_targi(u):
+# --- 4. FUNKCJE DANYCH (ZABEZPIECZONE) ---
+def load_targi_full(u):
     sheet_name = f"targi_{u.upper()}"
     try:
-        # ttl=0 wymusza pobranie świeżych danych przy każdym przeładowaniu
+        # ttl=0 wymusza pobranie świeżych danych z Google Sheets
         df = conn.read(worksheet=sheet_name, ttl=0)
-        # Filtrowanie tylko wierszy, które mają Nazwę Targów (wyrzuca puste "duchy")
+        # Czyszczenie wierszy bez nazwy targów (zapobiega "duchom" w tabeli)
         df = df.dropna(subset=["Nazwa Targów"]).reset_index(drop=True)
-        # Konwersja dat
+        # Naprawa formatów dat
         df["Pierwszy wyjazd"] = pd.to_datetime(df["Pierwszy wyjazd"], errors='coerce')
         df["Data końca"] = pd.to_datetime(df["Data końca"], errors='coerce')
         return df
     except Exception as e:
-        return pd.DataFrame(columns=["Nazwa Targów", "Pierwszy wyjazd", "Data końca", "Status", "Logistyk", "Zajętość auta", "Sloty", "Auta", "Grupa WhatsApp", "Parkingi", "UID"])
+        st.error(f"Błąd bazy: {e}")
+        return pd.DataFrame()
 
-def load_generic(sheet_name):
+def load_generic_full(sheet_name):
     try:
         return conn.read(worksheet=sheet_name, ttl=0).dropna(how='all').reset_index(drop=True)
     except:
         return pd.DataFrame()
 
-# Pobieranie danych
-df_dukiel = load_targi("DUKIEL")
-df_kaczmarek = load_targi("KACZMAREK")
-df_all_targi = pd.concat([df_dukiel, df_kaczmarek], ignore_index=True)
-df_clean_viz = df_all_targi.dropna(subset=["Pierwszy wyjazd", "Data końca"])
+# Pobieranie danych dla obu logistyków
+df_dukiel = load_targi_full("DUKIEL")
+df_kaczmarek = load_targi_full("KACZMAREK")
 
-# --- 4. NAWIGACJA ---
+# --- 5. NAWIGACJA GŁÓWNA ---
 menu = st.sidebar.radio("PROTOKÓŁ:", ["🏠 DZIENNIK", "📅 KALENDARZ", "📊 WYKRES GANTA", "📋 TABLICA ROZKAZÓW"])
 
-# --- MODUŁ 1: DZIENNIK ---
+# Przycisk wymuszonego odświeżenia w sidebarze
+if st.sidebar.button("🔄 ODŚWIEŻ DANE"):
+    st.cache_data.clear()
+    st.rerun()
+
+# --- MODUŁ 1: DZIENNIK OPERACJI ---
 if menu == "🏠 DZIENNIK":
-    st.title(f"📑 Dziennik Operacji: {user}")
+    st.title(f"📑 Dziennik: {user}")
     
     with st.expander("➕ NOWY MELDUNEK (DODAJ TRANSPORT)"):
         with st.form("new_entry_form", clear_on_submit=True):
@@ -135,10 +130,10 @@ if menu == "🏠 DZIENNIK":
             c1, c2 = st.columns(2)
             f_start = c1.date_input("Start transportu:", datetime.now())
             f_end = c2.date_input("Koniec transportu:", datetime.now() + timedelta(days=5))
-            f_zajetosc = st.text_input("Zajętość auta:")
+            f_zajetosc = st.text_input("Zajętość auta (LDM/Szt):")
             
             if st.form_submit_button("ZATWIERDŹ"):
-                current_my = load_targi(user)
+                current_data = load_targi_full(user)
                 new_row = pd.DataFrame([{
                     "Nazwa Targów": f_nazwa,
                     "Pierwszy wyjazd": f_start.strftime('%Y-%m-%d'),
@@ -152,129 +147,110 @@ if menu == "🏠 DZIENNIK":
                     "Parkingi": "NIE",
                     "UID": str(uuid.uuid4())[:8].upper()
                 }])
-                updated = pd.concat([current_my, new_row], ignore_index=True)
-                # Standaryzacja dat przed wysłaniem do GSheets
-                updated["Pierwszy wyjazd"] = pd.to_datetime(updated["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d')
-                updated["Data końca"] = pd.to_datetime(updated["Data końca"]).dt.strftime('%Y-%m-%d')
+                updated = pd.concat([current_data, new_row], ignore_index=True)
                 conn.update(worksheet=f"targi_{user}", data=updated)
-                st.success("MELDUNEK ZAPISANY.")
+                st.success("DODANO DO ARKUSZA.")
                 time.sleep(1)
                 st.rerun()
 
     st.subheader("✍️ Edycja Twoich Projektów")
-    my_data = df_dukiel if user == "DUKIEL" else df_kaczmarek
+    current_my_df = df_dukiel if user == "DUKIEL" else df_kaczmarek
     
-    options_sqm = ["TAK", "NIE", "NIE POTRZEBA"]
-    
-    col_cfg_targi = {
-        "Status": st.column_config.SelectboxColumn("Status", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"]),
-        "Sloty": st.column_config.SelectboxColumn("Sloty", options=options_sqm),
-        "Grupa WhatsApp": st.column_config.SelectboxColumn("Grupa WhatsApp", options=options_sqm),
-        "Parkingi": st.column_config.SelectboxColumn("Parkingi", options=options_sqm),
-        "Pierwszy wyjazd": st.column_config.DateColumn("Start"),
-        "Data końca": st.column_config.DateColumn("Powrót"),
-        "Logistyk": st.column_config.TextColumn("Logistyk", disabled=True),
-        "UID": st.column_config.TextColumn("UID", disabled=True)
-    }
-
-    if not my_data.empty:
-        # Dynamiczny klucz edytora zapobiega błędowi removeChild przy zmianie użytkownika
-        edited_targi = st.data_editor(
-            my_data, 
-            use_container_width=True, 
-            hide_index=True, 
-            column_config=col_cfg_targi, 
+    if not current_my_df.empty:
+        # KLUCZOWE: Użycie uuid jako key zapobiega błędowi removeChild
+        unique_key = f"editor_{user}_{str(uuid.uuid4())[:8]}"
+        
+        edited_df = st.data_editor(
+            current_my_df,
+            use_container_width=True,
+            hide_index=True,
             num_rows="dynamic",
-            key=f"editor_v4_{user}_{len(my_data)}"
+            key=unique_key,
+            column_config={
+                "Status": st.column_config.SelectboxColumn("Status", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"]),
+                "Sloty": st.column_config.SelectboxColumn("Sloty", options=["TAK", "NIE", "NIE POTRZEBA"]),
+                "Grupa WhatsApp": st.column_config.SelectboxColumn("Grupa WhatsApp", options=["TAK", "NIE", "NIE POTRZEBA"]),
+                "Parkingi": st.column_config.SelectboxColumn("Parkingi", options=["TAK", "NIE", "NIE POTRZEBA"]),
+                "Pierwszy wyjazd": st.column_config.DateColumn("Start"),
+                "Data końca": st.column_config.DateColumn("Powrót"),
+                "UID": st.column_config.TextColumn("UID", disabled=True)
+            }
         )
-
-        if st.button("💾 ZAPISZ ZMIANY W TRANSPORCIE"):
-            # Konwersja na stringi dla arkusza
-            edited_targi["Pierwszy wyjazd"] = pd.to_datetime(edited_targi["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d')
-            edited_targi["Data końca"] = pd.to_datetime(edited_targi["Data końca"]).dt.strftime('%Y-%m-%d')
-            conn.update(worksheet=f"targi_{user}", data=edited_targi)
-            st.success("DANE ZAKTUALIZOWANE.")
+        
+        if st.button("💾 ZAPISZ ZMIANY W TWOJEJ LIŚCIE"):
+            # Przygotowanie dat do zapisu w Google Sheets
+            edited_df["Pierwszy wyjazd"] = pd.to_datetime(edited_df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d')
+            edited_df["Data końca"] = pd.to_datetime(edited_df["Data końca"]).dt.strftime('%Y-%m-%d')
+            conn.update(worksheet=f"targi_{user}", data=edited_df)
+            st.success("ZAPISANO W CHMURZE.")
             time.sleep(1)
             st.rerun()
     else:
-        st.info("Brak projektów do wyświetlenia. Dodaj pierwszy transport powyżej.")
+        st.info("Brak aktywnych projektów w Twoim arkuszu.")
 
     st.markdown("---")
     partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
     st.subheader(f"👁️ Podgląd partnera: {partner}")
-    partner_data = df_kaczmarek if user == "DUKIEL" else df_dukiel
-    st.dataframe(partner_data, use_container_width=True, hide_index=True)
+    st.dataframe(df_kaczmarek if user == "DUKIEL" else df_dukiel, use_container_width=True, hide_index=True)
 
-# --- MODUŁ 2: KALENDARZ ---
+# --- MODUŁ 2: KALENDARZ WYJAZDÓW ---
 elif menu == "📅 KALENDARZ":
-    st.title("📅 Grafik SQM")
+    st.title("📅 Grafik Operacyjny SQM")
+    df_all = pd.concat([df_dukiel, df_kaczmarek], ignore_index=True)
+    df_viz = df_all.dropna(subset=["Pierwszy wyjazd", "Data końca"])
+    
     events = []
-    for _, r in df_clean_viz.iterrows():
+    for _, r in df_viz.iterrows():
         events.append({
             "title": f"[{r['Logistyk']}] {r['Nazwa Targów']}",
             "start": r["Pierwszy wyjazd"].strftime("%Y-%m-%d"),
             "end": (r["Data końca"] + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
-            "backgroundColor": "#4b5320" if r["Logistyk"] == "DUKIEL" else "#8b0000",
-            "borderColor": "#000"
+            "backgroundColor": "#4b5320" if r["Logistyk"] == "DUKIEL" else "#8b0000"
         })
-    calendar(events=events, options={"locale": "pl", "initialView": "dayGridMonth"}, key="sqm_calendar_stable")
+    calendar(events=events, options={"locale": "pl", "initialView": "dayGridMonth"}, key="full_calendar")
 
-# --- MODUŁ 3: GANTT ---
+# --- MODUŁ 3: WYKRES GANTA ---
 elif menu == "📊 WYKRES GANTA":
     st.title("📊 Timeline")
-    if not df_clean_viz.empty:
-        fig = px.timeline(df_clean_viz, x_start="Pierwszy wyjazd", x_end="Data końca", y="Nazwa Targów", color="Logistyk", color_discrete_map={"DUKIEL": "#4b5320", "KACZMAREK": "#8b0000"})
+    df_all = pd.concat([df_dukiel, df_kaczmarek], ignore_index=True)
+    df_viz = df_all.dropna(subset=["Pierwszy wyjazd", "Data końca"])
+    
+    if not df_viz.empty:
+        fig = px.timeline(df_viz, x_start="Pierwszy wyjazd", x_end="Data końca", y="Nazwa Targów", color="Logistyk", color_discrete_map={"DUKIEL": "#4b5320", "KACZMAREK": "#8b0000"})
         fig.update_yaxes(autorange="reversed")
-        fig.update_layout(paper_bgcolor="#fdf5e6", plot_bgcolor="#ffffff")
+        fig.update_layout(paper_bgcolor="#fdf5e6", plot_bgcolor="#ffffff", font_family="Special Elite")
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("Brak danych do wykresu.")
 
 # --- MODUŁ 4: TABLICA ROZKAZÓW ---
 elif menu == "📋 TABLICA ROZKAZÓW":
-    st.title("📋 Meldunki i Zadania")
-    t1, t2, t3 = st.tabs(["📢 OGŁOSZENIA", "✅ ZADANIA", "➕ NOWY WPIS"])
+    st.title("📋 Meldunki")
+    t1, t2, t3 = st.tabs(["📢 OGŁOSZENIA", "✅ ZADANIA", "➕ DODAJ NOWY WPIS"])
     
     with t1:
-        df_o = load_generic("ogloszenia")
-        ed_o = st.data_editor(
-            df_o, use_container_width=True, hide_index=True, num_rows="dynamic", key=f"ed_o_stable_{len(df_o)}",
-            column_config={
-                "Status": st.column_config.SelectboxColumn("Status", options=["AKTYWNE", "ARCHIWUM"]),
-                "Grupa": st.column_config.SelectboxColumn("Grupa", options=["LOGISTYKA", "TRANSPORT", "WSZYSCY"]),
-                "Tresc": st.column_config.TextColumn("Treść", width="large")
-            }
-        )
+        df_o = load_generic_full("ogloszenia")
+        ed_o = st.data_editor(df_o, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_ogloszenia_v6",
+                             column_config={"Status": st.column_config.SelectboxColumn("Status", options=["AKTYWNE", "ARCHIWUM"])})
         if st.button("💾 ZAPISZ OGŁOSZENIA"):
             conn.update(worksheet="ogloszenia", data=ed_o)
-            st.success("ZAPISANO.")
-            time.sleep(1)
             st.rerun()
-
+            
     with t2:
-        df_z = load_generic("zadania")
-        ed_z = st.data_editor(
-            df_z, use_container_width=True, hide_index=True, num_rows="dynamic", key=f"ed_z_stable_{len(df_z)}",
-            column_config={
-                "Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"]),
-                "Priorytet": st.column_config.SelectboxColumn("Priorytet", options=["PILNE", "NORMALNY", "NISKI"])
-            }
-        )
+        df_z = load_generic_full("zadania")
+        ed_z = st.data_editor(df_z, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_zadania_v6",
+                             column_config={"Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"])})
         if st.button("💾 ZAPISZ ZADANIA"):
             conn.update(worksheet="zadania", data=ed_z)
-            st.success("ZAPISANO.")
-            time.sleep(1)
             st.rerun()
 
     with t3:
-        with st.form("new_msg"):
+        with st.form("new_msg_form"):
             o_tytul = st.text_input("Tytuł:")
             o_grupa = st.selectbox("Grupa:", ["LOGISTYKA", "TRANSPORT", "WSZYSCY"])
             o_tresc = st.text_area("Treść:")
             if st.form_submit_button("PUBLIKUJ"):
-                df_old = load_generic("ogloszenia")
-                new_msg = pd.DataFrame([{"Data": datetime.now().strftime("%Y-%m-%d %H:%M"), "Grupa": o_grupa, "Tytul": o_tytul, "Tresc": o_tresc, "Autor": user, "Status": "AKTYWNE"}])
-                conn.update(worksheet="ogloszenia", data=pd.concat([df_old, new_msg], ignore_index=True))
+                df_old = load_generic_full("ogloszenia")
+                new_row = pd.DataFrame([{"Data": datetime.now().strftime("%Y-%m-%d %H:%M"), "Grupa": o_grupa, "Tytul": o_tytul, "Tresc": o_tresc, "Autor": user, "Status": "AKTYWNE"}])
+                conn.update(worksheet="ogloszenia", data=pd.concat([df_old, new_row], ignore_index=True))
                 st.success("WYSŁANO.")
                 time.sleep(1)
                 st.rerun()
