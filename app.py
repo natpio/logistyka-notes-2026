@@ -79,16 +79,6 @@ st.markdown("""
         line-height: 1.6; 
         margin-bottom: 20px;
     }
-    
-    .uk-alert {
-        color: #9b1c1c; 
-        background-color: #fdf2f2; 
-        padding: 10px;
-        border-radius: 5px; 
-        font-size: 0.85rem; 
-        margin-top: 10px; 
-        border-left: 4px solid #f05252;
-    }
 
     h1, h2, h3 {
         font-family: 'Special Elite', cursive !important;
@@ -97,7 +87,8 @@ st.markdown("""
         text-transform: uppercase;
         border-bottom: 2px solid #fdf5e6;
     }
-
+    
+    /* Naprawa kolorów w selectboxach */
     div[data-baseweb="select"] > div {
         background-color: #fdf5e6 !important;
         color: #000 !important;
@@ -129,12 +120,9 @@ def calculate_logistics(city, start_date, end_date, weight):
         uk_extra, uk_details = 0, ""
         if is_uk:
             ata = 166.0
-            if meta["vClass"] == "BUS": 
-                uk_extra, uk_details = ata + 332.0 + 19.0, "Prom (€332), ATA (€166), Mosty (€19)"
-            elif meta["vClass"] == "SOLO": 
-                uk_extra, uk_details = ata + 450.0 + 19.0 + 40.0, "Prom (€450), ATA (€166), Mosty (€19), Low Ems (€40)"
-            else: 
-                uk_extra, uk_details = ata + 522.0 + 19.0 + 69.0 + 30.0, "Prom (€522), ATA (€166), Mosty (€19), Low Ems (€69), Fuel (€30)"
+            if meta["vClass"] == "BUS": uk_extra, uk_details = ata + 332.0 + 19.0, "Prom (€332), ATA (€166), Mosty (€19)"
+            elif meta["vClass"] == "SOLO": uk_extra, uk_details = ata + 450.0 + 19.0 + 40.0, "Prom (€450), ATA (€166), Mosty (€19), Low Ems (€40)"
+            else: uk_extra, uk_details = ata + 522.0 + 19.0 + 69.0 + 30.0, "Prom (€522), ATA (€166), Mosty (€19), Low Ems (€69), Fuel (€30)"
         
         total = (base_exp * 2) + (meta["postoj"] * overlay) + uk_extra
         results.append({"name": name, "cost": total, "uk_info": uk_details})
@@ -168,17 +156,18 @@ except Exception as e:
 # --- 5. NAWIGACJA GŁÓWNA ---
 menu = st.sidebar.radio("PROTOKÓŁ:", ["🏠 DZIENNIK OPERACJI", "📅 KALENDARZ", "📊 WYKRES GANTA", "📋 TABLICA ROZKAZÓW", "🧮 KALKULATOR NORM"])
 
-# --- MODUŁ 1: DZIENNIK OPERACJI (NOWY SYSTEM EDYCJI) ---
+# --- MODUŁ 1: DZIENNIK OPERACJI (SYSTEM EDYCJI BEZPOŚREDNIEJ) ---
 if menu == "🏠 DZIENNIK OPERACJI":
     st.title("📑 Dziennik Transportów")
     
+    # Dodawanie projektów zostawiamy w Expanderze (rzadsza czynność)
     with st.expander("➕ NOWY MELDUNEK (DODAJ PROJEKT)"):
         with st.form("new_entry_form"):
             f_name = st.text_input("Nazwa Targów / Projektu:")
             c1, c2 = st.columns(2)
             f_start = c1.date_input("Start transportu:", datetime.now())
             f_end = c2.date_input("Koniec transportu:", datetime.now() + timedelta(days=5))
-            if st.form_submit_button("ZATWIERDŹ I DOPISZ DO AKT"):
+            if st.form_submit_button("ZATWIERDŹ"):
                 new_data = pd.DataFrame([{
                     "Nazwa Targów": f_name,
                     "Pierwszy wyjazd": f_start.strftime('%Y-%m-%d'),
@@ -191,84 +180,49 @@ if menu == "🏠 DZIENNIK OPERACJI":
 
     st.markdown("---")
     
-    # --- PANCERNY SYSTEM EDYCJI OPARTY O QUERY PARAMS ---
-    st.subheader(f"✍️ TWOJE PROJEKTY: {user}")
+    # --- NOWA LOGIKA: EDYCJA BEZ SELECTBOXA (KAFELKOWA) ---
+    st.subheader(f"✍️ TWOJE AKTYWNE OPERACJE: {user}")
     my_active = df_all[(df_all["Logistyk"] == user) & (df_all["Status"] != "WRÓCIŁO")].copy()
     
-    if not my_active.empty:
-        # Odczytujemy ID z adresu URL
-        query_params = st.query_params
-        active_id = query_params.get("edit_id", "---")
-
-        # Lista projektów do wyboru
-        options = ["---"] + [f"{r['Nazwa Targów']} (ID: {r['UID']})" for _, r in my_active.iterrows()]
-        
-        # Znalezienie indeksu dla selectboxa na podstawie URL
-        current_index = 0
-        if active_id != "---":
-            for i, opt in enumerate(options):
-                if f"(ID: {active_id})" in opt:
-                    current_index = i
-                    break
-
-        # Funkcja zmiany projektu - aktualizuje URL
-        def handle_selection():
-            selected = st.session_state.selector_key
-            if selected != "---":
-                new_id = selected.split("(ID: ")[1].replace(")", "")
-                st.query_params["edit_id"] = new_id
-            else:
-                st.query_params.clear()
-
-        st.selectbox("Wybierz projekt do modyfikacji:", 
-                     options=options, 
-                     index=current_index, 
-                     key="selector_key", 
-                     on_change=handle_selection)
-
-        # Formularz wyświetla się tylko jeśli w URL jest poprawne ID
-        if active_id != "---":
-            row_match = df_all[df_all["UID"] == active_id]
-            if not row_match.empty:
-                idx = row_match.index[0]
-                row = df_all.loc[idx]
+    if my_active.empty:
+        st.info("Brak aktywnych projektów przypisanych do Ciebie.")
+    else:
+        for idx, row in my_active.iterrows():
+            # Tworzymy unikalny kontener dla każdego projektu
+            with st.container():
+                st.markdown(f"### 📦 {row['Nazwa Targów']} (ID: {row['UID']})")
                 
-                # Używamy st.container() zamiast st.form() jeśli chcesz uniknąć podwójnego zatwierdzania, 
-                # ale tutaj zostajemy przy form dla bezpieczeństwa zapisu do Sheets.
-                with st.form(key=f"edit_v4_{active_id}"):
-                    st.write(f"🔧 Edycja operacji: **{row['Nazwa Targów']}**")
-                    u_name = st.text_input("Nazwa:", value=row["Nazwa Targów"])
-                    c1, c2, c3 = st.columns(3)
-                    u_status = c1.selectbox("Status:", ["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"], 
-                                         index=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"].index(row["Status"]))
-                    u_sloty = c2.selectbox("Sloty:", ["TAK", "NIE", "NIE POTRZEBA"], 
-                                         index=["TAK", "NIE", "NIE POTRZEBA"].index(row["Sloty"]) if row["Sloty"] in ["TAK", "NIE", "NIE POTRZEBA"] else 1)
-                    u_log = c3.selectbox("Logistyk:", ["DUKIEL", "KACZMAREK"], index=["DUKIEL", "KACZMAREK"].index(row["Logistyk"]))
+                # Używamy kolumn do edycji - KAŻDY komponent ma unikalny KEY bazujący na UID
+                col1, col2, col3, col4, col5 = st.columns([2, 1, 1, 1, 1])
+                
+                new_n = col1.text_input("Nazwa", value=row['Nazwa Targów'], key=f"n_{row['UID']}")
+                new_s = col2.selectbox("Status", ["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"], 
+                                      index=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"].index(row['Status']), key=f"s_{row['UID']}")
+                new_sl = col3.selectbox("Sloty", ["TAK", "NIE", "NIE POTRZEBA"], 
+                                       index=["TAK", "NIE", "NIE POTRZEBA"].index(row['Sloty']) if row['Sloty'] in ["TAK", "NIE", "NIE POTRZEBA"] else 1, key=f"sl_{row['UID']}")
+                
+                # Daty
+                new_d1 = col4.date_input("Start", value=row['Pierwszy wyjazd'], key=f"d1_{row['UID']}")
+                new_d2 = col5.date_input("Koniec", value=row['Data końca'], key=f"d2_{row['UID']}")
+                
+                # Przycisk zapisu tylko dla TEGO rzędu
+                if st.button(f"ZAPISZ {row['Nazwa Targów']}", key=f"btn_{row['UID']}"):
+                    # Znajdujemy indeks w głównym DF
+                    main_idx = df_all.index[df_all["UID"] == row["UID"]].tolist()[0]
                     
-                    u_start = st.date_input("Start:", row["Pierwszy wyjazd"])
-                    u_end = st.date_input("Powrót:", row["Data końca"])
-
-                    if st.form_submit_button("💾 ZAPISZ W BAZIE"):
-                        df_all.at[idx, "Nazwa Targów"] = u_name
-                        df_all.at[idx, "Status"] = u_status
-                        df_all.at[idx, "Sloty"] = u_sloty
-                        df_all.at[idx, "Logistyk"] = u_log
-                        df_all.at[idx, "Pierwszy wyjazd"] = u_start.strftime('%Y-%m-%d')
-                        df_all.at[idx, "Data końca"] = u_end.strftime('%Y-%m-%d')
-                        
-                        conn.update(worksheet="targi", data=df_all)
-                        st.query_params.clear() # Czyścimy URL po zapisie
-                        st.cache_data.clear()
-                        st.success("ZMIANY WPROWADZONE!")
-                        st.rerun()
-
-                if st.button("❌ ANULUJ"):
-                    st.query_params.clear()
+                    df_all.at[main_idx, "Nazwa Targów"] = new_n
+                    df_all.at[main_idx, "Status"] = new_s
+                    df_all.at[main_idx, "Sloty"] = new_sl
+                    df_all.at[main_idx, "Pierwszy wyjazd"] = new_d1.strftime('%Y-%m-%d')
+                    df_all.at[main_idx, "Data końca"] = new_d2.strftime('%Y-%m-%d')
+                    
+                    conn.update(worksheet="targi", data=df_all)
+                    st.cache_data.clear()
+                    st.success(f"Zaktualizowano: {row['Nazwa Targów']}")
                     st.rerun()
+                
+                st.markdown("---")
 
-        st.dataframe(my_active.drop(columns=["UID"]), use_container_width=True, hide_index=True)
-
-    st.markdown("---")
     partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
     st.subheader(f"👁️ PODGLĄD PARTNERA: {partner}")
     p_active = df_all[(df_all["Logistyk"] == partner) & (df_all["Status"] != "WRÓCIŁO")]
@@ -325,4 +279,10 @@ elif menu == "🧮 KALKULATOR NORM":
     d1 = c2.date_input("Start:", datetime.now()); d2 = c2.date_input("Koniec:", datetime.now() + timedelta(days=3))
     wynik = calculate_logistics(miasto, pd.to_datetime(d1), pd.to_datetime(d2), waga)
     if wynik:
-        st.markdown(f"<div class='recommendation-box'><b>REKOMENDACJA:</b> {wynik['name']}<br><b>KOSZT:</b> € {wynik['cost']:.2f}<br><small>{wynik['uk_info']}</small></div>", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="recommendation-box">
+            <b>REKOMENDACJA:</b> {wynik['name']}<br>
+            <b>KOSZT:</b> € {wynik['cost']:.2f} netto<br>
+            <small>{wynik['uk_info']}</small>
+        </div>
+        """, unsafe_allow_html=True)
