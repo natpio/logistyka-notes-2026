@@ -6,7 +6,7 @@ from streamlit_calendar import calendar
 from datetime import datetime, timedelta
 import uuid
 
-# --- 1. KONFIGURACJA WIZUALNA (ESTETYKA MILITARNA / CARGO) ---
+# --- 1. KONFIGURACJA WIZUALNA (ESTETYKA SZTABOWA) ---
 st.set_page_config(
     page_title="SZTAB LOGISTYKI SQM", 
     layout="wide", 
@@ -153,7 +153,7 @@ if user != "Wybierz...":
     elif input_pin: st.sidebar.error("❌ ODMOWA DOSTĘPU")
 if not is_authenticated: st.stop()
 
-# --- 4. WCZYTYWANIE DANYCH (ARKUSZ: targi i ogloszenia) ---
+# --- 4. WCZYTYWANIE DANYCH ---
 try:
     df_all = conn.read(worksheet="targi", ttl=0).dropna(subset=["Nazwa Targów"]).reset_index(drop=True)
     if "UID" not in df_all.columns: 
@@ -162,20 +162,17 @@ try:
     df_all["Data końca"] = pd.to_datetime(df_all["Data końca"], errors='coerce')
     
     df_notes = conn.read(worksheet="ogloszenia", ttl=0).dropna(how='all').reset_index(drop=True)
-    if not df_notes.empty:
-        df_notes["Data"] = pd.to_datetime(df_notes["Data"], errors='coerce')
 except Exception as e:
-    st.error(f"KRYTYCZNY BŁĄD POŁĄCZENIA: {e}"); st.stop()
+    st.error(f"Błąd bazy: {e}"); st.stop()
 
 # --- 5. NAWIGACJA GŁÓWNA ---
 menu = st.sidebar.radio("PROTOKÓŁ:", ["🏠 DZIENNIK OPERACJI", "📅 KALENDARZ", "📊 WYKRES GANTA", "📋 TABLICA ROZKAZÓW", "🧮 KALKULATOR NORM"])
 
-# --- MODUŁ 1: DZIENNIK OPERACJI (Z NAPRAWIONĄ EDYCJĄ) ---
+# --- MODUŁ 1: DZIENNIK OPERACJI (NOWY SYSTEM EDYCJI) ---
 if menu == "🏠 DZIENNIK OPERACJI":
     st.title("📑 Dziennik Transportów")
     
-    # DODAWANIE NOWEGO PROJEKTU
-    with st.expander("➕ NOWY MELDUNEK (DODAJ PROJEKT)", expanded=False):
+    with st.expander("➕ NOWY MELDUNEK (DODAJ PROJEKT)"):
         with st.form("new_entry_form"):
             f_name = st.text_input("Nazwa Targów / Projektu:")
             c1, c2 = st.columns(2)
@@ -189,103 +186,99 @@ if menu == "🏠 DZIENNIK OPERACJI":
                     "Logistyk": user, "Status": "OCZEKUJE", "Sloty": "NIE",
                     "UID": str(uuid.uuid4())[:8]
                 }])
-                updated_df = pd.concat([df_all, new_data], ignore_index=True)
-                conn.update(worksheet="targi", data=updated_df)
-                st.cache_data.clear(); st.success(f"Dodano: {f_name}"); st.rerun()
+                conn.update(worksheet="targi", data=pd.concat([df_all, new_data], ignore_index=True))
+                st.cache_data.clear(); st.rerun()
 
     st.markdown("---")
     
-    # SEKRECYJNY MECHANIZM TRZYMANIA SESJI EDYCJI
+    # --- PANCERNY SYSTEM EDYCJI OPARTY O QUERY PARAMS ---
     st.subheader(f"✍️ TWOJE PROJEKTY: {user}")
     my_active = df_all[(df_all["Logistyk"] == user) & (df_all["Status"] != "WRÓCIŁO")].copy()
     
     if not my_active.empty:
-        if 'current_edit_uid' not in st.session_state:
-            st.session_state.current_edit_uid = "---"
+        # Odczytujemy ID z adresu URL
+        query_params = st.query_params
+        active_id = query_params.get("edit_id", "---")
 
-        # Funkcja pomocnicza: Synchronizacja wyboru
-        def on_project_change():
-            if st.session_state.project_selector != "---":
-                st.session_state.current_edit_uid = st.session_state.project_selector.split("(ID: ")[1].replace(")", "")
-            else:
-                st.session_state.current_edit_uid = "---"
-
-        # Lista do wyboru
+        # Lista projektów do wyboru
         options = ["---"] + [f"{r['Nazwa Targów']} (ID: {r['UID']})" for _, r in my_active.iterrows()]
         
-        # Obliczanie aktualnego indeksu
-        current_idx = 0
-        if st.session_state.current_edit_uid != "---":
+        # Znalezienie indeksu dla selectboxa na podstawie URL
+        current_index = 0
+        if active_id != "---":
             for i, opt in enumerate(options):
-                if f"(ID: {st.session_state.current_edit_uid})" in opt:
-                    current_idx = i
+                if f"(ID: {active_id})" in opt:
+                    current_index = i
                     break
 
-        st.selectbox("Wybierz swój projekt do modyfikacji:", 
-                     options=options, 
-                     index=current_idx, 
-                     key="project_selector", 
-                     on_change=on_project_change)
+        # Funkcja zmiany projektu - aktualizuje URL
+        def handle_selection():
+            selected = st.session_state.selector_key
+            if selected != "---":
+                new_id = selected.split("(ID: ")[1].replace(")", "")
+                st.query_params["edit_id"] = new_id
+            else:
+                st.query_params.clear()
 
-        # Wyświetlanie formularza edycji tylko jeśli wybrano projekt
-        if st.session_state.current_edit_uid != "---":
-            target_uid = st.session_state.current_edit_uid
-            row_match = df_all[df_all["UID"] == target_uid]
-            
+        st.selectbox("Wybierz projekt do modyfikacji:", 
+                     options=options, 
+                     index=current_index, 
+                     key="selector_key", 
+                     on_change=handle_selection)
+
+        # Formularz wyświetla się tylko jeśli w URL jest poprawne ID
+        if active_id != "---":
+            row_match = df_all[df_all["UID"] == active_id]
             if not row_match.empty:
                 idx = row_match.index[0]
                 row = df_all.loc[idx]
                 
-                with st.form(key=f"edit_form_final_{target_uid}"):
-                    st.write(f"⚙️ MODYFIKACJA OPERACJI: **{row['Nazwa Targów']}**")
-                    new_name = st.text_input("Nazwa projektu:", value=row["Nazwa Targów"])
+                # Używamy st.container() zamiast st.form() jeśli chcesz uniknąć podwójnego zatwierdzania, 
+                # ale tutaj zostajemy przy form dla bezpieczeństwa zapisu do Sheets.
+                with st.form(key=f"edit_v4_{active_id}"):
+                    st.write(f"🔧 Edycja operacji: **{row['Nazwa Targów']}**")
+                    u_name = st.text_input("Nazwa:", value=row["Nazwa Targów"])
                     c1, c2, c3 = st.columns(3)
-                    new_status = c1.selectbox("Status:", ["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"], 
-                                             index=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"].index(row["Status"]))
-                    new_sloty = c2.selectbox("Sloty:", ["TAK", "NIE", "NIE POTRZEBA"], 
-                                            index=["TAK", "NIE", "NIE POTRZEBA"].index(row["Sloty"]) if row["Sloty"] in ["TAK", "NIE", "NIE POTRZEBA"] else 1)
-                    new_log = c3.selectbox("Logistyk:", ["DUKIEL", "KACZMAREK"], index=["DUKIEL", "KACZMAREK"].index(row["Logistyk"]))
+                    u_status = c1.selectbox("Status:", ["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"], 
+                                         index=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"].index(row["Status"]))
+                    u_sloty = c2.selectbox("Sloty:", ["TAK", "NIE", "NIE POTRZEBA"], 
+                                         index=["TAK", "NIE", "NIE POTRZEBA"].index(row["Sloty"]) if row["Sloty"] in ["TAK", "NIE", "NIE POTRZEBA"] else 1)
+                    u_log = c3.selectbox("Logistyk:", ["DUKIEL", "KACZMAREK"], index=["DUKIEL", "KACZMAREK"].index(row["Logistyk"]))
                     
-                    c4, c5 = st.columns(2)
-                    new_start = c4.date_input("Data wyjazdu:", row["Pierwszy wyjazd"] if pd.notnull(row["Pierwszy wyjazd"]) else datetime.now())
-                    new_end = c5.date_input("Data powrotu:", row["Data końca"] if pd.notnull(row["Data końca"]) else datetime.now())
+                    u_start = st.date_input("Start:", row["Pierwszy wyjazd"])
+                    u_end = st.date_input("Powrót:", row["Data końca"])
 
-                    col_save, col_cancel = st.columns([4, 1])
-                    if col_save.form_submit_button("💾 ZAPISZ ZMIANY W REJESTRZE"):
-                        df_all.at[idx, "Nazwa Targów"] = new_name
-                        df_all.at[idx, "Status"] = new_status
-                        df_all.at[idx, "Sloty"] = new_sloty
-                        df_all.at[idx, "Logistyk"] = new_log
-                        df_all.at[idx, "Pierwszy wyjazd"] = new_start.strftime('%Y-%m-%d')
-                        df_all.at[idx, "Data końca"] = new_end.strftime('%Y-%m-%d')
+                    if st.form_submit_button("💾 ZAPISZ W BAZIE"):
+                        df_all.at[idx, "Nazwa Targów"] = u_name
+                        df_all.at[idx, "Status"] = u_status
+                        df_all.at[idx, "Sloty"] = u_sloty
+                        df_all.at[idx, "Logistyk"] = u_log
+                        df_all.at[idx, "Pierwszy wyjazd"] = u_start.strftime('%Y-%m-%d')
+                        df_all.at[idx, "Data końca"] = u_end.strftime('%Y-%m-%d')
                         
-                        # Eksport do GSheets
-                        final_to_save = df_all.copy()
-                        for c in ["Pierwszy wyjazd", "Data końca"]:
-                            final_to_save[c] = pd.to_datetime(final_to_save[c]).dt.strftime('%Y-%m-%d').fillna('')
-                        
-                        conn.update(worksheet="targi", data=final_to_save)
-                        st.session_state.current_edit_uid = "---"
-                        st.cache_data.clear(); st.success("DANE ZAPISANE!"); st.rerun()
-                
-                if st.button("❌ PORZUĆ EDYCJĘ"):
-                    st.session_state.current_edit_uid = "---"
+                        conn.update(worksheet="targi", data=df_all)
+                        st.query_params.clear() # Czyścimy URL po zapisie
+                        st.cache_data.clear()
+                        st.success("ZMIANY WPROWADZONE!")
+                        st.rerun()
+
+                if st.button("❌ ANULUJ"):
+                    st.query_params.clear()
                     st.rerun()
 
         st.dataframe(my_active.drop(columns=["UID"]), use_container_width=True, hide_index=True)
 
     st.markdown("---")
     partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
-    st.subheader(f"👁️ PODGLĄD OPERACJI PARTNERA: {partner}")
-    partner_active = df_all[(df_all["Logistyk"] == partner) & (df_all["Status"] != "WRÓCIŁO")].copy()
-    if not partner_active.empty:
-        st.dataframe(partner_active.drop(columns=["UID"]), use_container_width=True, hide_index=True)
+    st.subheader(f"👁️ PODGLĄD PARTNERA: {partner}")
+    p_active = df_all[(df_all["Logistyk"] == partner) & (df_all["Status"] != "WRÓCIŁO")]
+    st.dataframe(p_active.drop(columns=["UID"]), use_container_width=True, hide_index=True)
 
-# --- MODUŁ 2: KALENDARZ OPERACYJNY ---
+# --- MODUŁ 2: KALENDARZ ---
 elif menu == "📅 KALENDARZ":
-    st.title("📅 Grafik Wyjazdów i Powrotów")
+    st.title("📅 Grafik Wyjazdów")
     events = []
-    for _, r in df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna())].iterrows():
+    for _, r in df_all[df_all["Pierwszy wyjazd"].notna()].iterrows():
         events.append({
             "title": f"[{r['Logistyk']}] {r['Nazwa Targów']}",
             "start": r["Pierwszy wyjazd"].strftime("%Y-%m-%d"),
@@ -294,54 +287,42 @@ elif menu == "📅 KALENDARZ":
         })
     calendar(events=events, options={"locale": "pl", "firstDay": 1})
 
-# --- MODUŁ 3: GANNT CHART ---
+# --- MODUŁ 3: GANNT ---
 elif menu == "📊 WYKRES GANTA":
-    st.title("📊 Harmonogram Operacyjny SQM")
-    df_viz = df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna())].copy()
-    if not df_viz.empty:
-        fig = px.timeline(df_viz, x_start="Pierwszy wyjazd", x_end="Data końca", y="Nazwa Targów", 
+    st.title("📊 Harmonogram Operacyjny")
+    df_v = df_all[df_all["Pierwszy wyjazd"].notna()].copy()
+    if not df_v.empty:
+        fig = px.timeline(df_v, x_start="Pierwszy wyjazd", x_end="Data końca", y="Nazwa Targów", 
                           color="Logistyk", color_discrete_map={"DUKIEL": "#4b5320", "KACZMAREK": "#8b0000"})
         fig.update_yaxes(autorange="reversed")
-        fig.update_layout(paper_bgcolor="#fdf5e6", plot_bgcolor="#ffffff", font_family="Special Elite")
         st.plotly_chart(fig, use_container_width=True)
 
-# --- MODUŁ 4: TABLICA ROZKAZÓW (OGŁOSZENIA) ---
+# --- MODUŁ 4: ROZKAZY ---
 elif menu == "📋 TABLICA ROZKAZÓW":
-    st.title("📋 Meldunki i Rozkazy")
-    with st.form("new_task_form"):
-        t_title = st.text_input("Treść zadania:")
-        t_status = st.selectbox("Status zadania:", ["DO ZROBIENIA", "W TRAKCIE"])
-        if st.form_submit_button("PUBLIKUJ ROZKAZ"):
-            new_task = pd.DataFrame([{"Tytul": t_title, "Status": t_status, "Autor": user, "Data": datetime.now().strftime('%Y-%m-%d')}])
-            conn.update(worksheet="ogloszenia", data=pd.concat([df_notes, new_task], ignore_index=True))
+    st.title("📋 Meldunki")
+    with st.form("task_f"):
+        t = st.text_input("Zadanie:"); s = st.selectbox("Status:", ["DO ZROBIENIA", "W TRAKCIE"])
+        if st.form_submit_button("PUBLIKUJ"):
+            new_n = pd.DataFrame([{"Tytul": t, "Status": s, "Autor": user, "Data": datetime.now().strftime('%Y-%m-%d')}])
+            conn.update(worksheet="ogloszenia", data=pd.concat([df_notes, new_n], ignore_index=True))
             st.cache_data.clear(); st.rerun()
-    
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("### 🔴 DO ZAŁATWIENIA")
-        for _, t in df_notes[df_notes["Status"] == "DO ZROBIENIA"].iterrows():
-            st.markdown(f"<div class='task-card' style='border-left-color: #8b0000'><b>{t['Tytul']}</b><br><small>Wystawił: {t['Autor']}</small></div>", unsafe_allow_html=True)
+        st.subheader("🔴 DO ZAŁATWIENIA")
+        for _, r in df_notes[df_notes["Status"] == "DO ZROBIENIA"].iterrows():
+            st.markdown(f"<div class='task-card'><b>{r['Tytul']}</b><br><small>{r['Autor']}</small></div>", unsafe_allow_html=True)
     with c2:
-        st.markdown("### 🟡 W REALIZACJI")
-        for _, t in df_notes[df_notes["Status"] == "W TRAKCIE"].iterrows():
-            st.markdown(f"<div class='task-card' style='border-left-color: #fbc02d'><b>{t['Tytul']}</b><br><small>Wystawił: {t['Autor']}</small></div>", unsafe_allow_html=True)
+        st.subheader("🟡 W TRAKCIE")
+        for _, r in df_notes[df_notes["Status"] == "W TRAKCIE"].iterrows():
+            st.markdown(f"<div class='task-card' style='border-left-color: #fbc02d'><b>{r['Tytul']}</b><br><small>{r['Autor']}</small></div>", unsafe_allow_html=True)
 
-# --- MODUŁ 5: KALKULATOR NORM ZAOPATRZENIA 2026 ---
+# --- MODUŁ 5: KALKULATOR ---
 elif menu == "🧮 KALKULATOR NORM":
-    st.title("🧮 Kalkulator Norm Zaopatrzenia 2026")
+    st.title("🧮 Kalkulator Norm Zaopatrzenia")
     c1, c2 = st.columns(2)
-    t_city = c1.selectbox("Kierunek docelowy operacji:", sorted(list(EXP_RATES["WŁASNY SQM BUS"].keys())))
-    t_weight = c1.number_input("Masa całkowita ładunku (kg):", min_value=0, value=500)
-    t_start = c2.date_input("Planowany wyjazd:", datetime.now())
-    t_end = c2.date_input("Planowany powrót:", datetime.now() + timedelta(days=4))
-    
-    calc = calculate_logistics(t_city, pd.to_datetime(t_start), pd.to_datetime(t_end), t_weight)
-    if calc:
-        st.markdown(f"""
-        <div class="recommendation-box">
-            <h3 style="color:#1e429f !important;">WYNIK ANALIZY LOGISTYCZNEJ</h3>
-            <b>REKOMENDOWANY ŚRODEK TRANSPORTU:</b> {calc['name']}<br>
-            <b>SZACOWANY KOSZT OPERACJI:</b> <span style="font-size: 1.5rem; color: #8b0000;">€ {calc['cost']:.2f} netto</span>
-            {f'<div class="uk-alert"><b>⚠️ SPECYFIKA WIELKA BRYTANIA (UK):</b><br>{calc["uk_info"]}</div>' if calc["uk_info"] else ""}
-        </div>
-        """, unsafe_allow_html=True)
+    miasto = c1.selectbox("Kierunek:", sorted(list(EXP_RATES["WŁASNY SQM BUS"].keys())))
+    waga = c1.number_input("Waga (kg):", value=500)
+    d1 = c2.date_input("Start:", datetime.now()); d2 = c2.date_input("Koniec:", datetime.now() + timedelta(days=3))
+    wynik = calculate_logistics(miasto, pd.to_datetime(d1), pd.to_datetime(d2), waga)
+    if wynik:
+        st.markdown(f"<div class='recommendation-box'><b>REKOMENDACJA:</b> {wynik['name']}<br><b>KOSZT:</b> € {wynik['cost']:.2f}<br><small>{wynik['uk_info']}</small></div>", unsafe_allow_html=True)
