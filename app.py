@@ -6,7 +6,7 @@ from streamlit_calendar import calendar
 from datetime import datetime, timedelta
 import uuid
 
-# --- 1. KONFIGURACJA WIZUALNA I STYLE ---
+# --- 1. KONFIGURACJA WIZUALNA (STYLE MILITARY/CARGO) ---
 st.set_page_config(page_title="SZTAB LOGISTYKI SQM", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
@@ -62,8 +62,8 @@ st.markdown("""
         border-radius: 8px;
         margin-bottom: 10px;
         border-left: 5px solid #8b0000;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         color: #333;
+        font-family: 'Special Elite', cursive;
     }
     
     .recommendation-box {
@@ -146,7 +146,7 @@ if user != "Wybierz...":
     elif input_pin: st.sidebar.error("❌ ODMOWA DOSTĘPU")
 if not is_authenticated: st.stop()
 
-# --- 4. POBIERANIE DANYCH ---
+# --- 4. DANE ---
 try:
     df_all = conn.read(worksheet="targi", ttl=0).dropna(subset=["Nazwa Targów"]).reset_index(drop=True)
     if "UID" not in df_all.columns: 
@@ -157,12 +157,12 @@ try:
     df_notes = conn.read(worksheet="ogloszenia", ttl=0).dropna(how='all').reset_index(drop=True)
     df_notes["Data"] = pd.to_datetime(df_notes["Data"], errors='coerce')
 except:
-    st.error("Błąd bazy danych."); st.stop()
+    st.error("Błąd połączenia z bazą danych."); st.stop()
 
 # --- 5. MENU GŁÓWNE ---
 menu = st.sidebar.radio("PROTOKÓŁ:", ["🏠 DZIENNIK OPERACJI", "📅 KALENDARZ", "📊 WYKRES GANTA", "📋 TABLICA ROZKAZÓW", "🧮 KALKULATOR NORM"])
 
-# --- MODUŁ 1: DZIENNIK OPERACJI ---
+# --- MODUŁ 1: DZIENNIK OPERACJI (OSOBNE TABELE) ---
 if menu == "🏠 DZIENNIK OPERACJI":
     st.title("📑 Dziennik Transportów")
     
@@ -187,12 +187,15 @@ if menu == "🏠 DZIENNIK OPERACJI":
                 st.cache_data.clear(); st.success(f"Dodano: {f_name}"); st.rerun()
 
     st.markdown("---")
-    st.subheader(f"✍️ ZARZĄDZANIE PROJEKTAMI: {user}")
+    
+    # --- TABELA UŻYTKOWNIKA (Z EDYCJĄ) ---
+    st.subheader(f"✍️ TWOJE PROJEKTY: {user}")
     my_active = df_all[(df_all["Logistyk"] == user) & (df_all["Status"] != "WRÓCIŁO")].copy()
     
     if not my_active.empty:
+        # Wybór bazuje na unikalnym UID
         task_map = {f"{r['Nazwa Targów']} (ID: {r['UID']})": r['UID'] for _, r in my_active.iterrows()}
-        selected_label = st.selectbox("Wybierz projekt do aktualizacji:", ["---"] + list(task_map.keys()))
+        selected_label = st.selectbox("Wybierz swój projekt do edycji:", ["---"] + list(task_map.keys()))
         
         if selected_label != "---":
             target_uid = task_map[selected_label]
@@ -202,24 +205,22 @@ if menu == "🏠 DZIENNIK OPERACJI":
                 st.error("⚠️ Ten projekt został usunięty przez innego użytkownika!"); st.button("Odśwież"); st.stop()
             
             idx = row_match.index[0]
-            current_row = df_all.loc[idx]
+            row = df_all.loc[idx]
             
             with st.form(f"edit_form_{target_uid}"):
-                new_name = st.text_input("Popraw nazwę projektu:", value=current_row["Nazwa Targów"])
+                new_name = st.text_input("Popraw nazwę projektu:", value=row["Nazwa Targów"])
                 col1, col2, col3 = st.columns(3)
                 new_status = col1.selectbox("Status:", ["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"], 
-                                          index=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"].index(current_row["Status"]))
+                                          index=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"].index(row["Status"]))
                 new_sloty = col2.selectbox("Sloty:", ["TAK", "NIE", "NIE POTRZEBA"], 
-                                         index=["TAK", "NIE", "NIE POTRZEBA"].index(current_row["Sloty"]) if current_row["Sloty"] in ["TAK", "NIE", "NIE POTRZEBA"] else 1)
-                new_log = col3.selectbox("Logistyk:", ["DUKIEL", "KACZMAREK"], index=["DUKIEL", "KACZMAREK"].index(current_row["Logistyk"]))
+                                         index=["TAK", "NIE", "NIE POTRZEBA"].index(row["Sloty"]) if row["Sloty"] in ["TAK", "NIE", "NIE POTRZEBA"] else 1)
+                new_log = col3.selectbox("Logistyk:", ["DUKIEL", "KACZMAREK"], index=["DUKIEL", "KACZMAREK"].index(row["Logistyk"]))
                 
                 col4, col5 = st.columns(2)
-                d_s = current_row["Pierwszy wyjazd"].date() if pd.notnull(current_row["Pierwszy wyjazd"]) else datetime.now().date()
-                d_e = current_row["Data końca"].date() if pd.notnull(current_row["Data końca"]) else datetime.now().date()
-                new_start = col4.date_input("Zmień Start:", d_s)
-                new_end = col5.date_input("Zmień Powrót:", d_e)
+                new_start = col4.date_input("Start:", row["Pierwszy wyjazd"] if pd.notnull(row["Pierwszy wyjazd"]) else datetime.now())
+                new_end = col5.date_input("Powrót:", row["Data końca"] if pd.notnull(row["Data końca"]) else datetime.now())
 
-                if st.form_submit_button("💾 ZAPISZ ZMIANY W BAZIE"):
+                if st.form_submit_button("💾 ZAPISZ ZMIANY"):
                     df_all.at[idx, "Nazwa Targów"] = new_name
                     df_all.at[idx, "Status"] = new_status
                     df_all.at[idx, "Sloty"] = new_sloty
@@ -231,30 +232,39 @@ if menu == "🏠 DZIENNIK OPERACJI":
                     for col in ["Pierwszy wyjazd", "Data końca"]:
                         final_df[col] = pd.to_datetime(final_df[col]).dt.strftime('%Y-%m-%d').fillna('')
                     conn.update(worksheet="targi", data=final_df)
-                    st.cache_data.clear(); st.success("Zapisano."); st.rerun()
+                    st.cache_data.clear(); st.success("Zaktualizowano."); st.rerun()
+        
+        st.dataframe(my_active, use_container_width=True, hide_index=True)
     else:
-        st.info("Brak aktywnych projektów.")
+        st.info("Brak Twoich aktywnych projektów.")
 
     st.markdown("---")
-    st.subheader("📋 AKTUALNA LISTA OPERACYJNA")
-    st.dataframe(df_all[df_all["Status"] != "WRÓCIŁO"], use_container_width=True, hide_index=True)
+    
+    # --- TABELA PARTNERA (TYLKO PODGLĄD) ---
+    partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
+    st.subheader(f"👁️ PODGLĄD OPERACJI PARTNERA: {partner}")
+    partner_active = df_all[(df_all["Logistyk"] == partner) & (df_all["Status"] != "WRÓCIŁO")].copy()
+    if not partner_active.empty:
+        st.dataframe(partner_active, use_container_width=True, hide_index=True)
+    else:
+        st.info(f"Brak aktywnych projektów u {partner}.")
 
 # --- MODUŁ 2: KALENDARZ ---
 elif menu == "📅 KALENDARZ":
-    st.title("📅 Grafik Wyjazdów")
+    st.title("📅 Grafik Wyjazdów i Powrotów")
     events = []
     for _, r in df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna())].iterrows():
         events.append({
             "title": f"[{r['Logistyk']}] {r['Nazwa Targów']}",
             "start": r["Pierwszy wyjazd"].strftime("%Y-%m-%d"),
             "end": (r["Data końca"] + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
-            "backgroundColor": "#2b2f11" if r["Logistyk"] == "DUKIEL" else "#8b0000"
+            "backgroundColor": "#4b5320" if r["Logistyk"] == "DUKIEL" else "#8b0000"
         })
     calendar(events=events, options={"locale": "pl", "firstDay": 1})
 
 # --- MODUŁ 3: WYKRES GANTA ---
 elif menu == "📊 WYKRES GANTA":
-    st.title("📊 Harmonogram Operacyjny")
+    st.title("📊 Harmonogram Operacyjny SQM")
     df_viz = df_all[(df_all["Status"] != "WRÓCIŁO") & (df_all["Pierwszy wyjazd"].notna()) & (df_all["Data końca"].notna())].copy()
     if not df_viz.empty:
         fig = px.timeline(df_viz, x_start="Pierwszy wyjazd", x_end="Data końca", y="Nazwa Targów", 
@@ -287,22 +297,21 @@ elif menu == "📋 TABLICA ROZKAZÓW":
 # --- MODUŁ 5: KALKULATOR NORM ---
 elif menu == "🧮 KALKULATOR NORM":
     st.title("🧮 Kalkulator Norm Zaopatrzenia 2026")
-    with st.container():
-        c1, c2 = st.columns(2)
-        with c1:
-            t_city = st.selectbox("Kierunek docelowy:", sorted(list(EXP_RATES["WŁASNY SQM BUS"].keys())))
-            t_weight = st.number_input("Masa ładunku (kg):", min_value=0, value=500)
-        with c2:
-            t_start = st.date_input("Wyjazd:", datetime.now())
-            t_end = st.date_input("Powrót:", datetime.now() + timedelta(days=4))
-        
-        calc = calculate_logistics(t_city, pd.to_datetime(t_start), pd.to_datetime(t_end), t_weight)
-        if calc:
-            st.markdown(f"""
-            <div class="recommendation-box">
-                <h3 style="color:#1e429f !important;">WYNIK ANALIZY</h3>
-                <b>REKOMENDACJA:</b> {calc['name']}<br>
-                <b>SZACOWANY KOSZT:</b> <span style="font-size: 1.5rem; color: #8b0000;">€ {calc['cost']:.2f} netto</span>
-                {f'<div class="uk-alert"><b>⚠️ UK INFO:</b><br>{calc["uk_info"]}</div>' if calc["uk_info"] else ""}
-            </div>
-            """, unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    with c1:
+        t_city = st.selectbox("Kierunek docelowy:", sorted(list(EXP_RATES["WŁASNY SQM BUS"].keys())))
+        t_weight = st.number_input("Masa ładunku (kg):", min_value=0, value=500)
+    with c2:
+        t_start = st.date_input("Wyjazd:", datetime.now())
+        t_end = st.date_input("Powrót:", datetime.now() + timedelta(days=4))
+    
+    calc = calculate_logistics(t_city, pd.to_datetime(t_start), pd.to_datetime(t_end), t_weight)
+    if calc:
+        st.markdown(f"""
+        <div class="recommendation-box">
+            <h3 style="color:#1e429f !important;">WYNIK ANALIZY</h3>
+            <b>REKOMENDACJA:</b> {calc['name']}<br>
+            <b>SZACOWANY KOSZT:</b> <span style="font-size: 1.5rem; color: #8b0000;">€ {calc['cost']:.2f} netto</span>
+            {f'<div class="uk-alert"><b>⚠️ UK INFO:</b><br>{calc["uk_info"]}</div>' if calc["uk_info"] else ""}
+        </div>
+        """, unsafe_allow_html=True)
