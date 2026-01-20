@@ -5,7 +5,7 @@ import plotly.express as px
 from streamlit_calendar import calendar
 from datetime import datetime, timedelta
 
-# --- 1. KONFIGURACJA WIZUALNA (SZTABOWY STYL + SPECIAL ELITE) ---
+# --- 1. KONFIGURACJA WIZUALNA ---
 st.set_page_config(page_title="SZTAB LOGISTYKI SQM", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
@@ -158,16 +158,16 @@ if user != "Wybierz...":
 if not is_authenticated:
     st.stop()
 
-# --- 4. POBIERANIE DANYCH (Z SORTOWANIEM DOMYŚLNYM) ---
+# --- 4. POBIERANIE DANYCH ---
 try:
-    df_all = conn.read(worksheet="targi", ttl=300).dropna(subset=["Nazwa Targów"])
+    # Kluczowe: Reset indeksu zapewnia stabilność edytora
+    df_all = conn.read(worksheet="targi", ttl=300).dropna(subset=["Nazwa Targów"]).reset_index(drop=True)
     df_all["Pierwszy wyjazd"] = pd.to_datetime(df_all["Pierwszy wyjazd"], errors='coerce')
     df_all["Data końca"] = pd.to_datetime(df_all["Data końca"], errors='coerce')
     
-    # Domyślne sortowanie od najwcześniejszego transportu
-    df_all = df_all.sort_values(by="Pierwszy wyjazd", ascending=True)
+    df_all = df_all.sort_values(by="Pierwszy wyjazd", ascending=True).reset_index(drop=True)
 
-    df_notes = conn.read(worksheet="ogloszenia", ttl=300).dropna(how='all')
+    df_notes = conn.read(worksheet="ogloszenia", ttl=300).dropna(how='all').reset_index(drop=True)
     df_notes["Data"] = pd.to_datetime(df_notes["Data"], errors='coerce')
     df_notes["Autor"] = df_notes["Autor"].astype(str).str.upper()
 except Exception:
@@ -199,8 +199,10 @@ if menu == "🏠 DZIENNIK OPERACJI":
                     "Sloty": "NIE"
                 }])
                 updated_df = pd.concat([df_all, new_data], ignore_index=True)
-                updated_df["Pierwszy wyjazd"] = pd.to_datetime(updated_df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d').fillna('')
-                updated_df["Data końca"] = pd.to_datetime(updated_df["Data końca"]).dt.strftime('%Y-%m-%d').fillna('')
+                # Standaryzacja dat przed zapisem
+                for col in ["Pierwszy wyjazd", "Data końca"]:
+                    updated_df[col] = pd.to_datetime(updated_df[col]).dt.strftime('%Y-%m-%d').fillna('')
+                
                 conn.update(worksheet="targi", data=updated_df)
                 st.cache_data.clear()
                 st.success(f"Dodano projekt: {f_name}")
@@ -238,20 +240,28 @@ if menu == "🏠 DZIENNIK OPERACJI":
 
     # --- TWOJA SEKCJA ---
     st.subheader(f"✍️ TWOJA SEKCJA: {user}")
-    search_me = st.text_input(f"🔍 Szukaj w swoich projektach:", key="search_me").lower()
+    search_me = st.text_input(f"🔍 Szukaj w swoich projektach:", key="search_me_input").lower()
     
     my_tasks = active_df[active_df["Logistyk"] == user].copy()
     if search_me:
         my_tasks = my_tasks[my_tasks.astype(str).apply(lambda x: x.str.lower().str.contains(search_me)).any(axis=1)]
     
-    # Sortowanie w tabeli jest możliwe poprzez kliknięcie w nagłówek "Start"
-    edited_my = st.data_editor(my_tasks, use_container_width=True, hide_index=True, column_config=col_config, key="editor_my", num_rows="dynamic")
+    # Naprawa błędu: Unikalny klucz i reset indeksu dla edytora
+    edited_my = st.data_editor(
+        my_tasks.reset_index(drop=True), 
+        use_container_width=True, 
+        hide_index=True, 
+        column_config=col_config, 
+        key=f"editor_active_{user}", 
+        num_rows="dynamic"
+    )
 
     if st.button("💾 ZAPISZ MOJE PROJEKTY"):
-        others = df_all[~df_all.index.isin(my_tasks.index)].copy()
+        # Pobieramy te, których nie edytowaliśmy (reszta bazy)
+        others = df_all[~df_all["Nazwa Targów"].isin(my_tasks["Nazwa Targów"])].copy()
         final_df = pd.concat([edited_my, others], ignore_index=True).dropna(subset=["Nazwa Targów"])
         
-        # Zabezpieczenie formatu daty przed wysyłką do GSheets
+        # Zabezpieczenie formatu daty przed wysyłką
         for col in ["Pierwszy wyjazd", "Data końca"]:
             if col in final_df.columns:
                 final_df[col] = pd.to_datetime(final_df[col]).dt.strftime('%Y-%m-%d').fillna('')
@@ -266,7 +276,7 @@ if menu == "🏠 DZIENNIK OPERACJI":
     # --- PODGLĄD PARTNERA ---
     partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
     st.subheader(f"👁️ PODGLĄD PARTNERA: {partner}")
-    search_p = st.text_input(f"🔍 Szukaj u partnera:", key="search_partner").lower()
+    search_p = st.text_input(f"🔍 Szukaj u partnera:", key="search_partner_input").lower()
     
     partner_tasks = active_df[active_df["Logistyk"] == partner].copy()
     if search_p:
@@ -325,8 +335,15 @@ elif menu == "📋 TABLICA ROZKAZÓW":
     st.markdown("---")
     st.subheader("🖋️ Zarządzanie Zadaniami")
     my_notes = df_notes[df_notes["Autor"] == user].copy()
-    edited_n = st.data_editor(my_notes, use_container_width=True, hide_index=True, num_rows="dynamic",
-                              column_config={"Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"], required=True)})
+    
+    edited_n = st.data_editor(
+        my_notes.reset_index(drop=True), 
+        use_container_width=True, 
+        hide_index=True, 
+        num_rows="dynamic",
+        key=f"notes_editor_{user}",
+        column_config={"Status": st.column_config.SelectboxColumn("Status", options=["DO ZROBIENIA", "W TRAKCIE", "WYKONANE"], required=True)}
+    )
     
     if st.button("💾 ZAKTUALIZUJ TABLICĘ"):
         new_my = edited_n.copy()
