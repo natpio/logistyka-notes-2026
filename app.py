@@ -222,24 +222,28 @@ elif menu == "📅 KALENDARZ":
         })
     calendar(events=events, options={"locale": "pl", "initialView": "dayGridMonth"}, key="cal_full_sqm")
 
-# --- MODUŁ 3: WYKRES GANTA (NAPRAWIONY VALUEERROR) ---
+# --- MODUŁ 3: WYKRES GANTA (NAPRAWA VALUEERROR) ---
 elif menu == "📊 WYKRES GANTA":
     st.title("📊 Sztabowy Wykres Ganta")
     
     df_all = pd.concat([df_dukiel, df_kaczmarek], ignore_index=True)
+    
+    # 1. Filtrowanie rekordów z poprawnymi datami
     df_viz = df_all.dropna(subset=["Pierwszy wyjazd", "Data końca", "Nazwa Targów"]).copy()
     
     if not df_viz.empty:
+        # 2. Konwersja dat
         df_viz["Pierwszy wyjazd"] = pd.to_datetime(df_viz["Pierwszy wyjazd"])
         df_viz["Data końca"] = pd.to_datetime(df_viz["Data końca"])
         df_viz = df_viz.sort_values(by="Pierwszy wyjazd", ascending=True)
 
-        # Zapewnienie unikalności wpisów na osi Y
-        df_viz["Etykieta"] = df_viz["Nazwa Targów"].astype(str) + " (" + df_viz["Logistyk"].astype(str) + ")"
+        # 3. Unikalna etykieta (Logistyk + Nazwa), aby uniknąć nakładania pasków
+        df_viz["Etykieta"] = df_viz["Logistyk"].astype(str) + ": " + df_viz["Nazwa Targów"].astype(str)
         
-        # POPRAWKA: Zabezpieczone obliczanie wysokości (zapewnia int i minimum 400px)
-        num_rows = len(df_viz)
-        chart_height = int(max(400, (num_rows * 50) + 150))
+        # 4. KLUCZOWA NAPRAWA BŁĘDU: chart_height musi być INT i nie może być zerem/NaN
+        num_items = len(df_viz)
+        calculated_height = (num_items * 45) + 150
+        chart_height = int(max(400, calculated_height)) # Minimalnie 400px, zawsze liczba całkowita
 
         fig = px.timeline(
             df_viz, 
@@ -252,10 +256,12 @@ elif menu == "📊 WYKRES GANTA":
         )
         
         fig.update_yaxes(autorange="reversed", type='category')
+        
+        # Zastosowanie bezpiecznej wysokości w update_layout
         fig.update_layout(
             height=chart_height,
             xaxis_title="Oś Czasu Operacji",
-            yaxis_title="Event / Projekt",
+            yaxis_title="Operator: Projekt",
             margin=dict(l=20, r=20, t=40, b=20),
             bar_gap=0.4
         )
