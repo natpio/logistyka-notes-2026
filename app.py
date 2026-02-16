@@ -101,21 +101,16 @@ def load_targi_clean(u):
     """Czyści dane, zapewnia UID i sortuje chronologicznie."""
     df = fetch_worksheet(f"targi_{u.upper()}")
     if df is not None and not df.empty:
-        # Usuwamy puste techniczne wiersze
         df = df.dropna(subset=["Nazwa Targów"]).reset_index(drop=True)
-        # Konwersja na format daty dla Streamlit i Plotly
+        # Usuwamy ewentualne spacje z nazw, które mogą psuć grupowanie
+        df["Nazwa Targów"] = df["Nazwa Targów"].astype(str).str.strip()
         df["Pierwszy wyjazd"] = pd.to_datetime(df["Pierwszy wyjazd"], errors='coerce')
         df["Data końca"] = pd.to_datetime(df["Data końca"], errors='coerce')
-        
-        # Sortowanie (najwcześniej wyjeżdżający na górze)
         df = df.sort_values(by="Pierwszy wyjazd", ascending=True).reset_index(drop=True)
-        
-        # Zapewnienie, że UID jest typem tekstowym
         if "UID" in df.columns:
             df["UID"] = df["UID"].astype(str)
     return df
 
-# Pobieranie danych dla obu logistyków
 df_dukiel = load_targi_clean("DUKIEL")
 df_kaczmarek = load_targi_clean("KACZMAREK")
 
@@ -130,7 +125,6 @@ if st.sidebar.button("🔄 WYMUŚ RE-SYNC"):
 if menu == "🏠 DZIENNIK":
     st.title(f"📑 Dziennik Operacyjny: {user}")
     
-    # 1.1 Dodawanie nowego wpisu
     with st.expander("➕ NOWY MELDUNEK (DODAJ TRANSPORT)"):
         with st.form("new_entry_form", clear_on_submit=True):
             f_nazwa = st.text_input("Nazwa Targów:")
@@ -142,7 +136,6 @@ if menu == "🏠 DZIENNIK":
             if st.form_submit_button("ZATWIERDŹ DO REALIZACJI"):
                 current_my = load_targi_clean(user)
                 new_uid = str(uuid.uuid4())[:8].upper()
-                
                 new_row = pd.DataFrame([{
                     "Nazwa Targów": f_nazwa, 
                     "Pierwszy wyjazd": f_start.strftime('%Y-%m-%d'),
@@ -156,16 +149,13 @@ if menu == "🏠 DZIENNIK":
                     "Parkingi": "NIE", 
                     "UID": new_uid
                 }])
-                
                 updated_df = pd.concat([current_my, new_row], ignore_index=True)
                 conn.update(worksheet=f"targi_{user}", data=updated_df)
-                
                 st.cache_data.clear()
-                st.success(f"DODANO DO ARKUSZA. PRZYDZIELONE UID: {new_uid}")
+                st.success(f"DODANO. UID: {new_uid}")
                 time.sleep(1)
                 st.rerun()
 
-    # 1.2 Edytor tabelaryczny
     st.subheader("✍️ Zarządzanie Projektami")
     my_df = df_dukiel if user == "DUKIEL" else df_kaczmarek
     
@@ -179,9 +169,6 @@ if menu == "🏠 DZIENNIK":
             column_config={
                 "Status": st.column_config.SelectboxColumn("Status", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"]),
                 "Logistyk": st.column_config.SelectboxColumn("Logistyk", options=["DUKIEL", "KACZMAREK"]),
-                "Sloty": st.column_config.SelectboxColumn("Sloty", options=["TAK", "NIE", "NIE POTRZEBA"]),
-                "Grupa WhatsApp": st.column_config.SelectboxColumn("Grupa WhatsApp", options=["TAK", "NIE", "NIE POTRZEBA"]),
-                "Parkingi": st.column_config.SelectboxColumn("Parkingi", options=["TAK", "NIE", "NIE POTRZEBA"]),
                 "Pierwszy wyjazd": st.column_config.DateColumn("Start"),
                 "Data końca": st.column_config.DateColumn("Powrót"),
                 "UID": st.column_config.TextColumn("UID", disabled=True)
@@ -190,9 +177,7 @@ if menu == "🏠 DZIENNIK":
         
         if st.button("💾 ZAPISZ I SYNCHRONIZUJ ZMIANY"):
             if 'UID' in edited_df.columns:
-                edited_df['UID'] = edited_df['UID'].apply(
-                    lambda x: str(uuid.uuid4())[:8].upper() if (pd.isna(x) or str(x).strip() == "" or str(x) == "None") else x
-                )
+                edited_df['UID'] = edited_df['UID'].apply(lambda x: str(uuid.uuid4())[:8].upper() if (pd.isna(x) or str(x).strip() == "" or str(x) == "None") else x)
             
             edited_df["Pierwszy wyjazd"] = pd.to_datetime(edited_df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d')
             edited_df["Data końca"] = pd.to_datetime(edited_df["Data końca"]).dt.strftime('%Y-%m-%d')
@@ -203,7 +188,6 @@ if menu == "🏠 DZIENNIK":
             
             if not move_to_partner.empty:
                 partner_df_latest = load_targi_clean(partner_name)
-                # Konwersja dat partnera na string przed konkatenacją
                 partner_df_latest["Pierwszy wyjazd"] = partner_df_latest["Pierwszy wyjazd"].dt.strftime('%Y-%m-%d')
                 partner_df_latest["Data końca"] = partner_df_latest["Data końca"].dt.strftime('%Y-%m-%d')
                 final_partner_df = pd.concat([partner_df_latest, move_to_partner], ignore_index=True)
@@ -215,18 +199,11 @@ if menu == "🏠 DZIENNIK":
             time.sleep(1)
             st.rerun()
 
-    st.markdown("---")
-    partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
-    st.subheader(f"👁️ Podgląd Operacyjny Partnera: {partner}")
-    df_partner_view = df_kaczmarek if user == "DUKIEL" else df_dukiel
-    st.dataframe(df_partner_view, use_container_width=True, hide_index=True)
-
 # --- MODUŁ 2: KALENDARZ WYJAZDÓW ---
 elif menu == "📅 KALENDARZ":
     st.title("📅 Grafik Transportowy SQM")
     df_all = pd.concat([df_dukiel, df_kaczmarek], ignore_index=True)
     df_viz = df_all.dropna(subset=["Pierwszy wyjazd", "Data końca"])
-    
     events = []
     for _, r in df_viz.iterrows():
         color = "#4b5320" if r["Logistyk"] == "DUKIEL" else "#8b0000"
@@ -237,25 +214,22 @@ elif menu == "📅 KALENDARZ":
             "backgroundColor": color,
             "borderColor": color
         })
-    calendar(events=events, options={"locale": "pl", "initialView": "dayGridMonth"}, key="cal_sqm_v13")
+    calendar(events=events, options={"locale": "pl", "initialView": "dayGridMonth"}, key="cal_sqm_v14")
 
-# --- MODUŁ 3: WYKRES GANTA (POPRAWIONY) ---
+# --- MODUŁ 3: WYKRES GANTA (POPRAWKA WIDOCZNOŚCI) ---
 elif menu == "📊 WYKRES GANTA":
     st.title("📊 Timeline Projektów SQM")
     
-    # Łączymy oba arkusze
     df_all = pd.concat([df_dukiel, df_kaczmarek], ignore_index=True)
-    
-    # 1. Usuwamy rekordy bez kluczowych danych
     df_viz = df_all.dropna(subset=["Pierwszy wyjazd", "Data końca", "Nazwa Targów"]).copy()
     
     if not df_viz.empty:
-        # 2. Upewniamy się, że daty są w formacie datetime (kluczowe dla px.timeline)
         df_viz["Pierwszy wyjazd"] = pd.to_datetime(df_viz["Pierwszy wyjazd"])
         df_viz["Data końca"] = pd.to_datetime(df_viz["Data końca"])
-        
-        # 3. Sortowanie, aby zachować porządek na wykresie
         df_viz = df_viz.sort_values(by="Pierwszy wyjazd", ascending=True)
+
+        # OBLICZANIE WYSOKOŚCI: 40 pikseli na wiersz + 100 na marginesy
+        dynamic_height = len(df_viz) * 40 + 100
 
         fig = px.timeline(
             df_viz, 
@@ -267,40 +241,40 @@ elif menu == "📊 WYKRES GANTA":
             hover_data=["Status", "Logistyk", "Zajętość auta"]
         )
         
-        fig.update_yaxes(autorange="reversed")
-        fig.update_layout(xaxis_title="Oś czasu", yaxis_title="Event")
+        fig.update_yaxes(autorange="reversed", type='category') # Wymuszenie traktowania osi Y jako kategorii
+        fig.update_layout(
+            height=dynamic_height, # Dynamiczna wysokość, by paski nie znikały
+            xaxis_title="Oś czasu",
+            yaxis_title="Event",
+            bar_gap=0.2 # Odstęp między paskami
+        )
         
         st.plotly_chart(fig, use_container_width=True)
 
-        # 4. DIAGNOSTYKA - Liczniki pod wykresem
-        st.markdown("### 📊 Status bazy danych")
+        # DIAGNOSTYKA
+        st.markdown("### 📊 Bilans Sztabowy")
         c1, c2, c3 = st.columns(3)
-        c1.metric("Łącznie eventów", len(df_viz))
-        c2.metric("Wpisy: DUKIEL", len(df_viz[df_viz['Logistyk'] == 'DUKIEL']))
-        c3.metric("Wpisy: KACZMAREK", len(df_viz[df_viz['Logistyk'] == 'KACZMAREK']))
-        
+        c1.metric("Łącznie w bazie", len(df_viz))
+        c2.metric("Logistyk DUKIEL", len(df_viz[df_viz['Logistyk'] == 'DUKIEL']))
+        c3.metric("Logistyk KACZMAREK", len(df_viz[df_viz['Logistyk'] == 'KACZMAREK']))
     else:
-        st.info("Brak danych do wizualizacji. Upewnij się, że wpisy mają uzupełnione daty.")
+        st.info("Brak danych do wizualizacji.")
 
 # --- MODUŁ 4: TABLICA ROZKAZÓW ---
 elif menu == "📋 TABLICA ROZKAZÓW":
     st.title("📋 Meldunki i Ogłoszenia")
     t1, t2 = st.tabs(["📢 OGŁOSZENIA", "✅ ZADANIA"])
-    
     with t1:
         df_o = fetch_worksheet("ogloszenia")
-        ed_o = st.data_editor(df_o, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_o_v13")
+        ed_o = st.data_editor(df_o, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_o_v14")
         if st.button("💾 ZAPISZ OGŁOSZENIA"):
             conn.update(worksheet="ogloszenia", data=ed_o)
             st.cache_data.clear()
-            st.success("Zapisano.")
             st.rerun()
-            
     with t2:
         df_z = fetch_worksheet("zadania")
-        ed_z = st.data_editor(df_z, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_z_v13")
+        ed_z = st.data_editor(df_z, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_z_v14")
         if st.button("💾 ZAPISZ ZADANIA"):
             conn.update(worksheet="zadania", data=ed_z)
             st.cache_data.clear()
-            st.success("Zapisano.")
             st.rerun()
