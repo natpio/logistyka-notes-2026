@@ -14,7 +14,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Pełny blok stylów CSS - bez cięć
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Special+Elite&display=swap');
@@ -103,22 +102,16 @@ def fetch_worksheet(name):
 def load_targi_clean(u):
     df = fetch_worksheet(f"targi_{u.upper()}")
     if df is not None and not df.empty:
-        # Usuwamy tylko wiersze, gdzie faktycznie nie ma nazwy eventu
         df = df.dropna(subset=["Nazwa Targów"]).reset_index(drop=True)
-        # Konwersja dat na obiekty datetime
         df["Pierwszy wyjazd"] = pd.to_datetime(df["Pierwszy wyjazd"], errors='coerce')
         df["Data końca"] = pd.to_datetime(df["Data końca"], errors='coerce')
-        # Sortowanie od najwcześniejszych
         df = df.sort_values(by="Pierwszy wyjazd", ascending=True).reset_index(drop=True)
-        # Upewnienie się, że UID jest str
         if "UID" in df.columns:
             df["UID"] = df["UID"].astype(str)
     else:
-        # Jeśli arkusz pusty, zwracamy strukturę
         df = pd.DataFrame(columns=["Nazwa Targów", "Pierwszy wyjazd", "Data końca", "Status", "Logistyk", "Zajętość auta", "Sloty", "Auta", "Grupa WhatsApp", "Parkingi", "UID"])
     return df
 
-# Pobieranie danych
 df_dukiel = load_targi_clean("DUKIEL")
 df_kaczmarek = load_targi_clean("KACZMAREK")
 
@@ -192,7 +185,6 @@ if menu == "🏠 DZIENNIK":
             if 'UID' in edited_df.columns:
                 edited_df['UID'] = edited_df['UID'].apply(lambda x: str(uuid.uuid4())[:8].upper() if (pd.isna(x) or str(x).strip() == "" or str(x) == "None") else x)
             
-            # Formatowanie do zapisu
             edited_df["Pierwszy wyjazd"] = pd.to_datetime(edited_df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d')
             edited_df["Data końca"] = pd.to_datetime(edited_df["Data końca"]).dt.strftime('%Y-%m-%d')
             
@@ -230,14 +222,11 @@ elif menu == "📅 KALENDARZ":
         })
     calendar(events=events, options={"locale": "pl", "initialView": "dayGridMonth"}, key="cal_full_sqm")
 
-# --- MODUŁ 3: WYKRES GANTA (PEŁNY I POPRAWNY) ---
+# --- MODUŁ 3: WYKRES GANTA (NAPRAWIONY VALUEERROR) ---
 elif menu == "📊 WYKRES GANTA":
-    st.title("📊 Sztabowy Wykres Ganta (Wszystkie Eventy)")
+    st.title("📊 Sztabowy Wykres Ganta")
     
-    # Połączenie danych obu logistyków
     df_all = pd.concat([df_dukiel, df_kaczmarek], ignore_index=True)
-    
-    # Oczyszczanie rekordów pod wykres
     df_viz = df_all.dropna(subset=["Pierwszy wyjazd", "Data końca", "Nazwa Targów"]).copy()
     
     if not df_viz.empty:
@@ -245,18 +234,18 @@ elif menu == "📊 WYKRES GANTA":
         df_viz["Data końca"] = pd.to_datetime(df_viz["Data końca"])
         df_viz = df_viz.sort_values(by="Pierwszy wyjazd", ascending=True)
 
-        # KLUCZ DO WIDOCZNOŚCI: 
-        # Tworzymy unikalną etykietę osi Y, żeby Plotly nie grupowało dwóch różnych eventów o tej samej nazwie
-        df_viz["Etykieta"] = df_viz["Nazwa Targów"] + " (" + df_viz["Logistyk"] + ")"
+        # Zapewnienie unikalności wpisów na osi Y
+        df_viz["Etykieta"] = df_viz["Nazwa Targów"].astype(str) + " (" + df_viz["Logistyk"].astype(str) + ")"
         
-        # Obliczanie wysokości - 50px na każdy rekord, żeby paski były grube i widoczne
-        chart_height = (len(df_viz) * 50) + 150
+        # POPRAWKA: Zabezpieczone obliczanie wysokości (zapewnia int i minimum 400px)
+        num_rows = len(df_viz)
+        chart_height = int(max(400, (num_rows * 50) + 150))
 
         fig = px.timeline(
             df_viz, 
             x_start="Pierwszy wyjazd", 
             x_end="Data końca", 
-            y="Etykieta", # Używamy unikalnej etykiety
+            y="Etykieta",
             color="Logistyk",
             color_discrete_map={"DUKIEL": "#4b5320", "KACZMAREK": "#8b0000"},
             hover_data=["Status", "Zajętość auta", "Logistyk"]
@@ -279,7 +268,7 @@ elif menu == "📊 WYKRES GANTA":
         c2.metric("Sektor DUKIEL", len(df_viz[df_viz['Logistyk'] == 'DUKIEL']))
         c3.metric("Sektor KACZMAREK", len(df_viz[df_viz['Logistyk'] == 'KACZMAREK']))
     else:
-        st.error("BRAK DANYCH DO GENEROWANIA WYKRESU.")
+        st.error("BRAK DANYCH DO GENEROWANIA WYKRESU. UPEWNIJ SIĘ, ŻE WPISY MAJĄ DATY.")
 
 # --- MODUŁ 4: TABLICA ROZKAZÓW ---
 elif menu == "📋 TABLICA ROZKAZÓW":
