@@ -7,72 +7,81 @@ from datetime import datetime, timedelta
 import time
 import uuid
 
-# --- 1. KONFIGURACJA WIZUALNA SZTABU ---
+# --- 1. KONFIGURACJA WIZUALNA STYLE: COCA-COLA ---
 st.set_page_config(page_title="SZTAB LOGISTYKI SQM", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&family=Oswald:wght@500;700&display=swap');
     
     .stApp { 
-        background-color: #F3F6F8; /* Jasnoszare, lotnicze tło */
-        font-family: 'Roboto', sans-serif; 
-        color: #05164D; /* Lufthansa Blue */
+        background-color: #F8F9FA; /* Czyste, jasne, nowoczesne tło */
+        font-family: 'Poppins', sans-serif; 
+        color: #1A1A1A; 
     }
     
     [data-testid="stSidebar"] { 
-        background-color: #05164D; /* Granatowy pasek boczny */
-        border-right: 4px solid #FFA500; /* Żółty pas startowy / akcent */
+        background-color: #F40009; /* Klasyczna czerwień Coca-Cola */
+        border-right: 3px solid #1A1A1A; 
     }
     
-    [data-testid="stSidebar"] * {
-        color: #FFFFFF !important; /* Biały tekst w sidebarze */
+    /* Stylowanie elementów tekstowych w panelu bocznym, by były czytelne na czerwonym tle */
+    [data-testid="stSidebar"] p, 
+    [data-testid="stSidebar"] label, 
+    [data-testid="stSidebar"] h2, 
+    [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] .stMarkdown {
+        color: #FFFFFF !important; 
+        font-family: 'Poppins', sans-serif;
     }
     
     div[data-testid="stMetric"], .element-container {
         background-color: #FFFFFF; 
-        border-top: 4px solid #05164D; /* Granatowy akcent na górze widżetów */
-        border-radius: 4px;
-        box-shadow: 0px 4px 6px rgba(0,0,0,0.05); /* Nowoczesny, delikatny cień */
+        border-left: 6px solid #F40009; /* Dynamiczny czerwony akcent po lewej stronie widżetów */
+        border-radius: 8px;
+        box-shadow: 0px 4px 16px rgba(0,0,0,0.06); 
         padding: 15px;
-        color: #05164D !important;
+        color: #1A1A1A !important;
     }
     
     .stDataFrame, [data-testid="stPlotlyChart"] {
         background-color: #FFFFFF !important;
-        padding: 10px;
-        border: 1px solid #E0E0E0;
-        border-radius: 4px;
+        padding: 12px;
+        border: 1px solid #E5E5E5;
+        border-radius: 8px;
     }
     
     .stButton>button {
-        background-color: #FFA500; /* Lufthansa Yellow */
-        color: #05164D; /* Granatowy tekst */
+        background-color: #F40009; /* Coca-Cola Red */
+        color: #FFFFFF !important; 
         border: none;
-        border-radius: 4px;
-        font-family: 'Roboto', sans-serif;
+        border-radius: 25px; /* Zaokrąglone kształty w stylu brandu */
+        font-family: 'Oswald', sans-serif;
         font-size: 1.1rem;
-        font-weight: 700;
+        font-weight: 500;
         text-transform: uppercase;
+        letter-spacing: 1px;
         width: 100%;
-        box-shadow: 0px 2px 4px rgba(0,0,0,0.1);
+        box-shadow: 0px 4px 8px rgba(244, 0, 9, 0.15);
         transition: all 0.3s ease;
     }
     
     .stButton>button:hover {
-        background-color: #E59400; /* Ciemniejszy odcień żółtego przy najechaniu */
-        color: #05164D;
-        box-shadow: 0px 4px 8px rgba(0,0,0,0.2);
+        background-color: #CC0007; /* Głębszy odcień przy najechaniu */
+        color: #FFFFFF !important;
+        box-shadow: 0px 6px 14px rgba(244, 0, 9, 0.25);
+        transform: translateY(-1px);
     }
 
     h1, h2, h3 {
-        font-family: 'Roboto', sans-serif !important;
-        color: #05164D !important;
+        font-family: 'Oswald', sans-serif !important;
+        color: #F40009 !important; /* Wyraziste, czerwone nagłówki */
         font-weight: 700;
         text-transform: uppercase;
-        border-bottom: 2px solid #FFA500;
-        padding-bottom: 8px;
-        text-shadow: none; /* Usunięto militarny cień */
+        letter-spacing: 0.5px;
+        border-bottom: 3px solid #F40009;
+        padding-bottom: 6px;
+        text-shadow: none;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -252,7 +261,8 @@ elif menu == "📅 KALENDARZ":
     
     events = []
     for _, r in df_viz.iterrows():
-        color = "#05164D" if r["Logistyk"] == "DUKIEL" else "#FFA500"
+        # DUKIEL -> Coca-Cola Red, KACZMAREK -> Coca-Cola Zero Black
+        color = "#F40009" if r["Logistyk"] == "DUKIEL" else "#1A1A1A"
         events.append({
             "title": f"[{r['Logistyk']}] {r['Nazwa Targów']}",
             "start": r["Pierwszy wyjazd"].strftime("%Y-%m-%d"),
@@ -274,7 +284,7 @@ elif menu == "📊 WYKRES GANTA":
             x_end="Data końca", 
             y="Nazwa Targów", 
             color="Logistyk", 
-            color_discrete_map={"DUKIEL": "#05164D", "KACZMAREK": "#FFA500"}
+            color_discrete_map={"DUKIEL": "#F40009", "KACZMAREK": "#1A1A1A"}
         )
         fig.update_yaxes(autorange="reversed")
         st.plotly_chart(fig, use_container_width=True)
