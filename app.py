@@ -7,81 +7,109 @@ from datetime import datetime, timedelta
 import time
 import uuid
 
-# --- 1. KONFIGURACJA WIZUALNA STYLE: COCA-COLA ---
-st.set_page_config(page_title="SZTAB LOGISTYKI SQM", layout="wide", initial_sidebar_state="expanded")
+# --- 1. KONFIGURACJA WIZUALNA: LUFTHANSA LEVEL 999 ---
+st.set_page_config(page_title="SQM OPERATION CENTER", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&family=Oswald:wght@500;700&display=swap');
+    /* Ekskluzywne czcionki z Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Montserrat:wght@500;700;800&display=swap');
     
+    /* BAZA APLIKACJI */
     .stApp { 
-        background-color: #F8F9FA; /* Czyste, jasne, nowoczesne tło */
-        font-family: 'Poppins', sans-serif; 
-        color: #1A1A1A; 
+        background-color: #F4F6F9; /* Bardzo delikatny, sterylny błękit/szarość chmur */
+        font-family: 'Inter', sans-serif; 
+        color: #05164D; /* Lufthansa Deep Blue */
     }
     
+    /* PASEK BOCZNY (KOKPIT) */
     [data-testid="stSidebar"] { 
-        background-color: #F40009; /* Klasyczna czerwień Coca-Cola */
-        border-right: 3px solid #1A1A1A; 
+        background-color: #05164D; 
+        background-image: linear-gradient(180deg, #05164D 0%, #030e30 100%);
+        border-right: 4px solid #FFB900; /* Lufthansa Gold/Yellow */
+        box-shadow: 4px 0 20px rgba(0,0,0,0.15);
     }
-    
-    /* Stylowanie elementów tekstowych w panelu bocznym, by były czytelne na czerwonym tle */
-    [data-testid="stSidebar"] p, 
-    [data-testid="stSidebar"] label, 
-    [data-testid="stSidebar"] h2, 
-    [data-testid="stSidebar"] span,
-    [data-testid="stSidebar"] .stMarkdown {
+    [data-testid="stSidebar"] * {
         color: #FFFFFF !important; 
-        font-family: 'Poppins', sans-serif;
+        font-family: 'Inter', sans-serif;
+        font-weight: 400;
     }
     
+    /* WIDŻETY I KONTENERY (KARTY POKŁADOWE) */
     div[data-testid="stMetric"], .element-container {
         background-color: #FFFFFF; 
-        border-left: 6px solid #F40009; /* Dynamiczny czerwony akcent po lewej stronie widżetów */
         border-radius: 8px;
-        box-shadow: 0px 4px 16px rgba(0,0,0,0.06); 
-        padding: 15px;
-        color: #1A1A1A !important;
+        box-shadow: 0px 8px 24px rgba(5, 22, 77, 0.05); /* Luksusowy, miękki cień */
+        padding: 12px;
+        border-top: 5px solid #05164D;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    div[data-testid="stMetric"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0px 12px 30px rgba(5, 22, 77, 0.08);
     }
     
+    /* TABELE I WYKRESY */
     .stDataFrame, [data-testid="stPlotlyChart"] {
         background-color: #FFFFFF !important;
-        padding: 12px;
-        border: 1px solid #E5E5E5;
-        border-radius: 8px;
+        padding: 15px;
+        border: 1px solid #E2E8F0;
+        border-radius: 12px;
+        box-shadow: 0px 4px 15px rgba(0,0,0,0.02);
     }
     
+    /* PRZYCISKI AKCJI (KLASA BIZNES) */
     .stButton>button {
-        background-color: #F40009; /* Coca-Cola Red */
-        color: #FFFFFF !important; 
+        background-color: #FFB900; 
+        color: #05164D !important; 
         border: none;
-        border-radius: 25px; /* Zaokrąglone kształty w stylu brandu */
-        font-family: 'Oswald', sans-serif;
-        font-size: 1.1rem;
-        font-weight: 500;
+        border-radius: 6px;
+        font-family: 'Montserrat', sans-serif;
+        font-size: 1.05rem;
+        font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 1px;
         width: 100%;
-        box-shadow: 0px 4px 8px rgba(244, 0, 9, 0.15);
-        transition: all 0.3s ease;
+        padding: 0.6rem 1.2rem;
+        box-shadow: 0px 4px 12px rgba(255, 185, 0, 0.3);
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     }
-    
     .stButton>button:hover {
-        background-color: #CC0007; /* Głębszy odcień przy najechaniu */
-        color: #FFFFFF !important;
-        box-shadow: 0px 6px 14px rgba(244, 0, 9, 0.25);
-        transform: translateY(-1px);
+        background-color: #E5A600; 
+        box-shadow: 0px 6px 18px rgba(255, 185, 0, 0.45);
+        transform: translateY(-2px);
     }
 
+    /* NAGŁÓWKI Z PASKA LUFTHANSY */
     h1, h2, h3 {
-        font-family: 'Oswald', sans-serif !important;
-        color: #F40009 !important; /* Wyraziste, czerwone nagłówki */
-        font-weight: 700;
+        font-family: 'Montserrat', sans-serif !important;
+        color: #05164D !important;
+        font-weight: 800;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
-        border-bottom: 3px solid #F40009;
-        padding-bottom: 6px;
-        text-shadow: none;
+        letter-spacing: 1.2px;
+        border-bottom: none; 
+    }
+    h1::after, h2::after {
+        content: '';
+        display: block;
+        width: 60px;
+        height: 4px;
+        background-color: #FFB900;
+        margin-top: 8px;
+        border-radius: 2px;
+    }
+    
+    /* INPUTY I POLA TEKSTOWE */
+    .stTextInput>div>div>input, .stSelectbox>div>div>div {
+        border-radius: 6px;
+        border: 1px solid #CBD5E1;
+        background-color: #F8FAFC;
+        color: #05164D;
+        font-weight: 500;
+    }
+    .stTextInput>div>div>input:focus, .stSelectbox>div>div>div:focus {
+        border-color: #FFB900;
+        box-shadow: 0 0 0 2px rgba(255, 185, 0, 0.2);
     }
     </style>
     """, unsafe_allow_html=True)
@@ -90,17 +118,19 @@ st.markdown("""
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- 3. LOGIKA OPERATORA I DOSTĘPU ---
-st.sidebar.markdown("<h2 style='text-align: center;'>REJESTR LOGISTYKI</h2>", unsafe_allow_html=True)
-user = st.sidebar.selectbox("👤 OPERATOR:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
+st.sidebar.markdown("<h2 style='text-align: center; color: #FFB900; letter-spacing: 2px;'>✈️ SQM OPERATION CENTER</h2>", unsafe_allow_html=True)
+st.sidebar.markdown("<br>", unsafe_allow_html=True) # Odstęp
+
+user = st.sidebar.selectbox("👨‍✈️ DOWÓDCA ZMIANY:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
 user_pins = {"DUKIEL": "9607", "KACZMAREK": "1225"}
 
 if user == "Wybierz...":
-    st.warning("IDENTYFIKUJ SIĘ W PANELU BOCZNYM...")
+    st.warning("🛫 AUTORYZACJA WYMAGANA W PANELU BOCZNYM...")
     st.stop()
 
-input_pin = st.sidebar.text_input("KOD DOSTĘPU (PIN):", type="password")
+input_pin = st.sidebar.text_input("🔑 PIN DOSTĘPU:", type="password")
 if input_pin != user_pins.get(user):
-    if input_pin: st.sidebar.error("❌ BŁĘDNY PIN")
+    if input_pin: st.sidebar.error("❌ ODMOWA DOSTĘPU")
     st.stop()
 
 # --- 4. FUNKCJE DANYCH I SORTOWANIA ---
@@ -116,50 +146,43 @@ def fetch_worksheet(name):
         return pd.DataFrame()
 
 def load_targi_clean(u):
-    """Czyści dane, zapewnia UID i sortuje chronologicznie (najwcześniej wyjeżdżający na górze)."""
+    """Czyści dane, zapewnia UID i sortuje chronologicznie."""
     df = fetch_worksheet(f"targi_{u.upper()}")
     if not df.empty:
-        # Usuwamy puste techniczne wiersze
         df = df.dropna(subset=["Nazwa Targów"]).reset_index(drop=True)
-        # Konwersja na format daty dla Streamlit
         df["Pierwszy wyjazd"] = pd.to_datetime(df["Pierwszy wyjazd"], errors='coerce')
         df["Data końca"] = pd.to_datetime(df["Data końca"], errors='coerce')
-        
-        # --- KLUCZOWE SORTOWANIE (Rosnąco po dacie startu) ---
         df = df.sort_values(by="Pierwszy wyjazd", ascending=True).reset_index(drop=True)
-        
-        # Zapewnienie, że UID jest typem tekstowym
         if "UID" in df.columns:
             df["UID"] = df["UID"].astype(str)
     return df
 
-# Pobieranie danych dla obu logistyków (do kalendarza i mechanizmu transferu)
 df_dukiel = load_targi_clean("DUKIEL")
 df_kaczmarek = load_targi_clean("KACZMAREK")
 
 # --- 5. NAWIGACJA GŁÓWNA ---
-menu = st.sidebar.radio("PROTOKÓŁ:", ["🏠 DZIENNIK", "📅 KALENDARZ", "📊 WYKRES GANTA", "📋 TABLICA ROZKAZÓW"])
+st.sidebar.markdown("<br>", unsafe_allow_html=True)
+menu = st.sidebar.radio("📋 PROTOKÓŁ NAWIGACYJNY:", ["🏠 DZIENNIK", "📅 KALENDARZ", "📊 WYKRES GANTA", "📋 TABLICA ROZKAZÓW"])
 
-if st.sidebar.button("🔄 WYMUŚ RE-SYNC"):
+st.sidebar.markdown("<br>", unsafe_allow_html=True)
+if st.sidebar.button("🔄 WYMUŚ RE-SYNC RADARU"):
     st.cache_data.clear()
     st.rerun()
 
 # --- MODUŁ 1: DZIENNIK OPERACJI ---
 if menu == "🏠 DZIENNIK":
-    st.title(f"📑 Dziennik Operacyjny: {user}")
+    st.title(f"🛫 Terminal Operacyjny: {user}")
     
-    # 1.1 Dodawanie nowego wpisu z auto-generacją UID
     with st.expander("➕ NOWY MELDUNEK (DODAJ TRANSPORT)"):
         with st.form("new_entry_form", clear_on_submit=True):
-            f_nazwa = st.text_input("Nazwa Targów:")
+            f_nazwa = st.text_input("Nazwa Projektu / Cel Lotu:")
             c1, c2 = st.columns(2)
-            f_start = c1.date_input("Start transportu:", datetime.now())
-            f_end = c2.date_input("Koniec transportu:", datetime.now() + timedelta(days=5))
-            f_zajetosc = st.text_input("Zajętość auta:")
+            f_start = c1.date_input("Start (Wylot):", datetime.now())
+            f_end = c2.date_input("Koniec (Przylot):", datetime.now() + timedelta(days=5))
+            f_zajetosc = st.text_input("Zajętość pojazdu/ładowni:")
             
-            if st.form_submit_button("ZATWIERDŹ DO REALIZACJI"):
+            if st.form_submit_button("ZATWIERDŹ PLAN LOTU"):
                 current_my = load_targi_clean(user)
-                # GENEROWANIE UNIKALNEGO UID
                 new_uid = str(uuid.uuid4())[:8].upper()
                 
                 new_row = pd.DataFrame([{
@@ -176,17 +199,15 @@ if menu == "🏠 DZIENNIK":
                     "UID": new_uid
                 }])
                 
-                # Zapis do Google Sheets
                 updated_df = pd.concat([current_my, new_row], ignore_index=True)
                 conn.update(worksheet=f"targi_{user}", data=updated_df)
                 
                 st.cache_data.clear()
-                st.success(f"DODANO DO ARKUSZA. PRZYDZIELONE UID: {new_uid}")
+                st.success(f"DODANO DO SYSTEMU. PRZYDZIELONO KOD: {new_uid}")
                 time.sleep(1)
                 st.rerun()
 
-    # 1.2 Edytor tabelaryczny z mechanizmem transferu
-    st.subheader("✍️ Zarządzanie Projektami (Sortowanie: Chronologiczne)")
+    st.subheader("✍️ Zarządzanie Flotą (Chronologicznie)")
     my_df = df_dukiel if user == "DUKIEL" else df_kaczmarek
     
     if not my_df.empty:
@@ -208,75 +229,70 @@ if menu == "🏠 DZIENNIK":
             }
         )
         
-        if st.button("💾 ZAPISZ I SYNCHRONIZUJ ZMIANY"):
-            # A. AUTO-UID DLA WPISÓW DODANYCH RĘCZNIE W TABELI
+        if st.button("💾 ZAPISZ I SYNCHRONIZUJ DANE SYSTEMOWE"):
             if 'UID' in edited_df.columns:
                 edited_df['UID'] = edited_df['UID'].apply(
                     lambda x: str(uuid.uuid4())[:8].upper() if (pd.isna(x) or str(x).strip() == "" or str(x) == "None") else x
                 )
             
-            # B. KONWERSJA DAT NA TEKST PRZED ZAPISEM
             edited_df["Pierwszy wyjazd"] = pd.to_datetime(edited_df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d')
             edited_df["Data końca"] = pd.to_datetime(edited_df["Data końca"]).dt.strftime('%Y-%m-%d')
             
-            # C. LOGIKA TRANSFERU WIERSZA MIĘDZY LOGISTYKAMI
             partner_name = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
             
-            # Filtrowanie co zostaje, a co wyjeżdża do partnera
             stay_here = edited_df[edited_df["Logistyk"] == user]
             move_to_partner = edited_df[edited_df["Logistyk"] == partner_name]
             
             if not move_to_partner.empty:
-                # Pobranie aktualnego arkusza partnera i przygotowanie do konkatenacji
                 partner_df_latest = load_targi_clean(partner_name)
                 partner_df_latest["Pierwszy wyjazd"] = partner_df_latest["Pierwszy wyjazd"].dt.strftime('%Y-%m-%d')
                 partner_df_latest["Data końca"] = partner_df_latest["Data końca"].dt.strftime('%Y-%m-%d')
                 
-                # Dodanie wierszy do partnera i aktualizacja Google Sheets
                 final_partner_df = pd.concat([partner_df_latest, move_to_partner], ignore_index=True)
                 conn.update(worksheet=f"targi_{partner_name}", data=final_partner_df)
                 st.info(f"PRZENIESIONO {len(move_to_partner)} PROJEKT(ÓW) DO: {partner_name}")
 
-            # Aktualizacja własnego arkusza (tylko wiersze, które nie zostały przeniesione)
             conn.update(worksheet=f"targi_{user}", data=stay_here)
             
             st.cache_data.clear()
-            st.success("SYNCHRONIZACJA ZAKOŃCZONA. DANE POSORTOWANE.")
+            st.success("SYNCHRONIZACJA ZAKOŃCZONA.")
             time.sleep(1)
             st.rerun()
     else:
-        st.info("Brak aktywnych projektów w Twoim dzienniku.")
+        st.info("Brak aktywnych projektów w Twoim dzienniku pokładowym.")
 
     st.markdown("---")
     partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
-    st.subheader(f"👁️ Podgląd Operacyjny Partnera: {partner}")
+    st.subheader(f"👁️ Radar Operacyjny Partnera: {partner}")
     df_partner_view = df_kaczmarek if user == "DUKIEL" else df_dukiel
     st.dataframe(df_partner_view, use_container_width=True, hide_index=True)
 
 # --- MODUŁ 2: KALENDARZ WYJAZDÓW ---
 elif menu == "📅 KALENDARZ":
-    st.title("📅 Grafik Transportowy SQM")
+    st.title("📅 Grafik Transportowy (Flight Schedule)")
     df_all = pd.concat([df_dukiel, df_kaczmarek], ignore_index=True)
     df_viz = df_all.dropna(subset=["Pierwszy wyjazd", "Data końca"])
     
     events = []
     for _, r in df_viz.iterrows():
-        # DUKIEL -> Coca-Cola Red, KACZMAREK -> Coca-Cola Zero Black
-        color = "#F40009" if r["Logistyk"] == "DUKIEL" else "#1A1A1A"
+        # Kolory Lufthansy w kalendarzu (Granat dla Dukiela, Złoto dla Kaczmarka)
+        color = "#05164D" if r["Logistyk"] == "DUKIEL" else "#FFB900"
         events.append({
             "title": f"[{r['Logistyk']}] {r['Nazwa Targów']}",
             "start": r["Pierwszy wyjazd"].strftime("%Y-%m-%d"),
             "end": (r["Data końca"] + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
             "backgroundColor": color,
-            "borderColor": color
+            "borderColor": color,
+            "textColor": "#FFFFFF" if color == "#05164D" else "#05164D" # Zapewnienie czytelności
         })
     calendar(events=events, options={"locale": "pl", "initialView": "dayGridMonth"}, key="cal_sqm_v10")
 
 # --- MODUŁ 3: WYKRES GANTA ---
 elif menu == "📊 WYKRES GANTA":
-    st.title("📊 Timeline Projektów")
+    st.title("📊 Timeline Projektów (Flight Path)")
     df_all = pd.concat([df_dukiel, df_kaczmarek], ignore_index=True)
     df_viz = df_all.dropna(subset=["Pierwszy wyjazd", "Data końca"])
+    
     if not df_viz.empty:
         fig = px.timeline(
             df_viz, 
@@ -284,32 +300,41 @@ elif menu == "📊 WYKRES GANTA":
             x_end="Data końca", 
             y="Nazwa Targów", 
             color="Logistyk", 
-            color_discrete_map={"DUKIEL": "#F40009", "KACZMAREK": "#1A1A1A"}
+            color_discrete_map={"DUKIEL": "#05164D", "KACZMAREK": "#FFB900"}
         )
         fig.update_yaxes(autorange="reversed")
+        
+        # Oczyszczenie wykresu Ganta - styl premium
+        fig.update_layout(
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(family="Inter", color="#05164D"),
+            xaxis=dict(showgrid=True, gridcolor="#E2E8F0"),
+            yaxis=dict(showgrid=False)
+        )
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Brak danych do wizualizacji.")
+        st.info("Brak danych na radarze.")
 
 # --- MODUŁ 4: TABLICA ROZKAZÓW ---
 elif menu == "📋 TABLICA ROZKAZÓW":
-    st.title("📋 Meldunki i Ogłoszenia")
-    t1, t2 = st.tabs(["📢 OGŁOSZENIA", "✅ ZADANIA"])
+    st.title("📋 Komunikaty i Zadania (Flight Deck)")
+    t1, t2 = st.tabs(["📢 OGŁOSZENIA METEO / BAZA", "✅ ZADANIA DO WYKONANIA"])
     
     with t1:
         df_o = fetch_worksheet("ogloszenia")
         ed_o = st.data_editor(df_o, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_o_v10")
-        if st.button("💾 ZAPISZ OGŁOSZENIA"):
+        if st.button("💾 ZATWIERDŹ KOMUNIKATY"):
             conn.update(worksheet="ogloszenia", data=ed_o)
             st.cache_data.clear()
-            st.success("Zapisano ogłoszenia.")
+            st.success("Komunikaty zaktualizowane na tablicy odlotów.")
             st.rerun()
             
     with t2:
         df_z = fetch_worksheet("zadania")
         ed_z = st.data_editor(df_z, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_z_v10")
-        if st.button("💾 ZAPISZ ZADANIA"):
+        if st.button("💾 ZATWIERDŹ ZADANIA"):
             conn.update(worksheet="zadania", data=ed_z)
             st.cache_data.clear()
-            st.success("Zapisano zadania.")
+            st.success("Log operacyjny zapisany.")
             st.rerun()
