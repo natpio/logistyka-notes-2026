@@ -1,9 +1,34 @@
 /* Ekskluzywne czcionki z Google Fonts (Inter, Montserrat oraz techniczna Share Tech Mono) */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Montserrat:wght@500;700;800&family=Share+Tech+Mono&display=swap');
 
-/* BAZA APLIKACJI */
+/* =========================================
+   UKRYCIE NARZĘDZI STREAMLIT (Share, GitHub, Menu)
+   ========================================= */
+[data-testid="stHeader"] {
+    display: none !important;
+}
+#MainMenu {
+    visibility: hidden !important;
+}
+footer {
+    visibility: hidden !important;
+}
+/* Ukrycie dodatkowych opcji, które czasem pojawiają się przy włączonym deweloper-mode */
+[data-testid="stToolbar"] {
+    display: none !important;
+}
+
+/* =========================================
+   BAZA APLIKACJI I TŁO (Siatka Kartograficzna)
+   ========================================= */
 .stApp { 
-    background-color: #F4F6F9; /* Bardzo delikatny, sterylny błękit/szarość chmur */
+    background-color: #F4F6F9; /* Jasny błękit/szarość */
+    /* Dodanie delikatnej siatki nawigacyjnej w tle (krycie 3%) */
+    background-image: 
+        linear-gradient(rgba(5, 22, 77, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(5, 22, 77, 0.03) 1px, transparent 1px);
+    background-size: 35px 35px; /* Wielkość kratek siatki */
+    
     font-family: 'Inter', sans-serif; 
     color: #05164D; /* Lufthansa Deep Blue */
 }
@@ -140,12 +165,9 @@ div[data-baseweb="popover"] li {
     color: #05164D !important;
 }
 
-
 /* =========================================
    MODUŁ: TABLICA LOTÓW (CZARNE TŁO, BIAŁY TEKST)
    ========================================= */
-
-/* Obudowa całej sekcji tabeli z czarnym tłem */
 [data-testid="stDataFrame"] {
     position: relative;
     background-color: #000000 !important;
@@ -155,22 +177,17 @@ div[data-baseweb="popover"] li {
     padding: 5px !important;
 }
 
-/* Kolorowanie tekstu nad tabelą (np. narzędzia lupki) na złoty kolor Lufthansy */
 [data-testid="stDataFrame"] [data-testid="stElementToolbar"] * {
     font-family: 'Share Tech Mono', monospace !important;
     color: #FFB900 !important;
 }
 
-/* Próba wymuszenia dla starszych elementów DOM / tooltipów w tabeli */
 [data-testid="stDataFrame"] div, 
 [data-testid="stDataFrame"] span {
     color: #FFFFFF !important;
 }
 
-/* HAK WIZUALNY DLA PŁÓTNA (CANVAS):
-   Ponieważ Streamlit "rysuje" siatkę danych jako grafikę <canvas>, odwracamy 
-   jej jasne kolory, ściągamy z nich nasycenie barw (grayscale) i podbijamy 
-   kontrast. Dzięki temu zyskujesz czystą czarną tabelę z białym drukiem! */
+/* Odwrócenie kolorów i ściągnięcie barw dla płótna tabeli */
 [data-testid="stDataFrame"] canvas {
     filter: invert(1) grayscale(100%) brightness(1.6);
     border-radius: 4px;
