@@ -9,7 +9,7 @@ import uuid
 import os
 
 # --- 1. KONFIGURACJA WIZUALNA ---
-st.set_page_config(page_title="SQM OPERATION CENTER", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="SQM NOTES I STATUSY", layout="wide", initial_sidebar_state="expanded")
 
 # Wczytanie zewnętrznego pliku CSS (style.css)
 def load_css(file_name):
