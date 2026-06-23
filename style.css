@@ -1,5 +1,5 @@
-/* Ekskluzywne czcionki z Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Montserrat:wght@500;700;800&display=swap');
+/* Ekskluzywne czcionki z Google Fonts (Inter, Montserrat oraz techniczna Share Tech Mono do tablicy) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Montserrat:wght@500;700;800&family=Share+Tech+Mono&display=swap');
 
 /* BAZA APLIKACJI */
 .stApp { 
@@ -16,7 +16,7 @@
     box-shadow: 4px 0 20px rgba(0,0,0,0.15);
 }
 
-/* NAPRAWA: Usunięcie białych bloków (dziedziczenia kart) z paska bocznego */
+/* Usunięcie białych bloków (dziedziczenia kart) z paska bocznego */
 [data-testid="stSidebar"] .element-container {
     background-color: transparent !important;
     box-shadow: none !important;
@@ -50,8 +50,8 @@
     box-shadow: 0px 12px 30px rgba(5, 22, 77, 0.08);
 }
 
-/* TABELE I WYKRESY */
-.stDataFrame, [data-testid="stPlotlyChart"] {
+/* WYKRESY (oddzielone od tabel ze względu na moduł Solari) */
+[data-testid="stPlotlyChart"] {
     background-color: #FFFFFF !important;
     padding: 15px;
     border: 1px solid #E2E8F0;
@@ -138,4 +138,51 @@ div[data-baseweb="popover"] li {
 }
 [data-testid="stAlert"] * {
     color: #05164D !important;
+}
+
+/* =========================================
+   MODUŁ: RETRO TABLICA KLAPKOWA (SOLARI BOARD)
+   ========================================= */
+
+/* Masywna, mechaniczna rama wokół całej tabeli */
+[data-testid="stDataFrame"] {
+    position: relative;
+    background-color: #1e1e1e !important;
+    border: 14px solid #0a1128 !important; /* Ciemnogranatowa obudowa */
+    border-radius: 12px !important;
+    box-shadow: inset 0px 5px 15px rgba(0,0,0,0.8), 0px 10px 30px rgba(5, 22, 77, 0.4) !important;
+    padding: 2px !important;
+    overflow: hidden;
+}
+
+/* Wymuszenie czcionki w pasku narzędzi nad tabelą */
+[data-testid="stDataFrame"] [data-testid="stElementToolbar"] {
+    font-family: 'Share Tech Mono', monospace !important;
+    color: #FFB900 !important;
+}
+
+/* HAK WIZUALNY: Nakładka imitująca podział klapek */
+[data-testid="stDataFrame"]::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none; /* Kluczowe! Przepuszcza kliknięcia myszką do komórek */
+    
+    /* Generowanie powtarzających się, cieniutkich linii cięcia wierszy */
+    background: repeating-linear-gradient(
+        to bottom,
+        rgba(0,0,0,0) 0px,
+        rgba(0,0,0,0) 17px,
+        rgba(5, 22, 77, 0.25) 17px, /* Cienka linia odcięcia na środku litery */
+        rgba(5, 22, 77, 0.25) 18px,
+        rgba(0,0,0,0) 18px,
+        rgba(0,0,0,0) 35px,
+        rgba(5, 22, 77, 0.5) 35px,  /* Grubsza krawędź między całymi klapkami */
+        rgba(5, 22, 77, 0.5) 37px
+    );
+    z-index: 50;
+    opacity: 0.9;
 }
