@@ -6,144 +6,20 @@ from streamlit_calendar import calendar
 from datetime import datetime, timedelta
 import time
 import uuid
+import os
 
-# --- 1. KONFIGURACJA WIZUALNA: LUFTHANSA LEVEL 999 ---
+# --- 1. KONFIGURACJA WIZUALNA ---
 st.set_page_config(page_title="SQM OPERATION CENTER", layout="wide", initial_sidebar_state="expanded")
 
-st.markdown("""
-    <style>
-    /* Ekskluzywne czcionki z Google Fonts */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Montserrat:wght@500;700;800&display=swap');
-    
-    /* BAZA APLIKACJI */
-    .stApp { 
-        background-color: #F4F6F9; /* Bardzo delikatny, sterylny błękit/szarość chmur */
-        font-family: 'Inter', sans-serif; 
-        color: #05164D; /* Lufthansa Deep Blue */
-    }
-    
-    /* PASEK BOCZNY (KOKPIT) */
-    [data-testid="stSidebar"] { 
-        background-color: #05164D; 
-        background-image: linear-gradient(180deg, #05164D 0%, #030e30 100%);
-        border-right: 4px solid #FFB900; /* Lufthansa Gold/Yellow */
-        box-shadow: 4px 0 20px rgba(0,0,0,0.15);
-    }
-    
-    /* Teksty w panelu bocznym - jasne, ALE bez psucia inputów */
-    [data-testid="stSidebar"] p, 
-    [data-testid="stSidebar"] label,
-    [data-testid="stSidebar"] .stMarkdown {
-        color: #FFFFFF !important; 
-        font-family: 'Inter', sans-serif;
-        font-weight: 400;
-    }
+# Wczytanie zewnętrznego pliku CSS (style.css)
+def load_css(file_name):
+    with open(file_name, "r") as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-    /* WIDŻETY I KONTENERY (KARTY POKŁADOWE) */
-    div[data-testid="stMetric"], .element-container {
-        background-color: #FFFFFF; 
-        border-radius: 8px;
-        box-shadow: 0px 8px 24px rgba(5, 22, 77, 0.05); 
-        padding: 12px;
-        border-top: 5px solid #05164D;
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    div[data-testid="stMetric"]:hover {
-        transform: translateY(-2px);
-        box-shadow: 0px 12px 30px rgba(5, 22, 77, 0.08);
-    }
-    
-    /* TABELE I WYKRESY */
-    .stDataFrame, [data-testid="stPlotlyChart"] {
-        background-color: #FFFFFF !important;
-        padding: 15px;
-        border: 1px solid #E2E8F0;
-        border-radius: 12px;
-        box-shadow: 0px 4px 15px rgba(0,0,0,0.02);
-    }
-    
-    /* PRZYCISKI AKCJI (KLASA BIZNES) */
-    .stButton>button {
-        background-color: #FFB900; 
-        color: #05164D !important; 
-        border: none;
-        border-radius: 6px;
-        font-family: 'Montserrat', sans-serif;
-        font-size: 1.05rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        width: 100%;
-        padding: 0.6rem 1.2rem;
-        box-shadow: 0px 4px 12px rgba(255, 185, 0, 0.3);
-        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-    }
-    .stButton>button:hover {
-        background-color: #E5A600; 
-        box-shadow: 0px 6px 18px rgba(255, 185, 0, 0.45);
-        transform: translateY(-2px);
-    }
-
-    /* NAGŁÓWKI (GŁÓWNY WIDOK) */
-    h1, h2, h3 {
-        font-family: 'Montserrat', sans-serif !important;
-        color: #05164D !important;
-        font-weight: 800;
-        text-transform: uppercase;
-        letter-spacing: 1.2px;
-        border-bottom: none; 
-    }
-    h1::after, h2::after {
-        content: '';
-        display: block;
-        width: 60px;
-        height: 4px;
-        background-color: #FFB900;
-        margin-top: 8px;
-        border-radius: 2px;
-    }
-
-    /* NAPRAWA NAGŁÓWKÓW W PANELU BOCZNYM */
-    [data-testid="stSidebar"] h1, 
-    [data-testid="stSidebar"] h2, 
-    [data-testid="stSidebar"] h3 {
-        color: #FFB900 !important; 
-    }
-    [data-testid="stSidebar"] h1::after, 
-    [data-testid="stSidebar"] h2::after {
-        display: none !important; 
-    }
-    
-    /* NAPRAWA PÓL LOGOWANIA W PANELU BOCZNYM (Białe tło, granatowy tekst) */
-    div[data-baseweb="select"] > div, 
-    input[type="text"], 
-    input[type="password"] {
-        background-color: #FFFFFF !important;
-        color: #05164D !important;
-        border-radius: 6px !important;
-        font-weight: 600 !important;
-    }
-    div[data-baseweb="select"] span {
-        color: #05164D !important;
-    }
-    div[data-baseweb="popover"] ul {
-        background-color: #FFFFFF !important;
-    }
-    div[data-baseweb="popover"] li {
-        color: #05164D !important;
-    }
-    
-    /* KOMUNIKATY INFO/WARNING */
-    [data-testid="stAlert"] {
-        background-color: #FFFFFF !important;
-        border-left: 5px solid #FFB900 !important;
-        color: #05164D !important;
-    }
-    [data-testid="stAlert"] * {
-        color: #05164D !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+try:
+    load_css("style.css")
+except FileNotFoundError:
+    st.error("Brak pliku style.css w katalogu głównym!")
 
 # --- 2. POŁĄCZENIE Z BAZĄ GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -152,8 +28,8 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 st.sidebar.markdown("<h2 style='text-align: center; letter-spacing: 2px;'>✈️ SQM OPERATION CENTER</h2>", unsafe_allow_html=True)
 st.sidebar.markdown("<br>", unsafe_allow_html=True) # Odstęp
 
-user = st.sidebar.selectbox("👨‍✈️ DOWÓDCA ZMIANY:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
-user_pins = {"DUKIEL": "9607", "KACZMAREK": "1225"}
+user = st.sidebar.selectbox("👨‍✈️ DOWÓDCA ZMIANY:", ["Wybierz...", "DUKIEL", "ALICJA"])
+user_pins = {"DUKIEL": "9607", "ALICJA": "1225"} # Zostawiłem PIN 1225 dla Alicji. Możesz go tu zmienić.
 
 if user == "Wybierz...":
     st.warning("🛫 AUTORYZACJA WYMAGANA W PANELU BOCZNYM...")
@@ -164,7 +40,7 @@ if input_pin != user_pins.get(user):
     if input_pin: st.sidebar.error("❌ ODMOWA DOSTĘPU")
     st.stop()
 
-# --- 4. FUNKCJE DANYCH I SORTOWANIA ---
+# --- 4. FUNKCJE DANYCH I SORTOWANIA Z MAPOWANIEM KACZMAREK <-> ALICJA ---
 def fetch_worksheet(name):
     """Pobiera dane z konkretnej zakładki arkusza z TTL 10s."""
     try:
@@ -177,10 +53,18 @@ def fetch_worksheet(name):
         return pd.DataFrame()
 
 def load_targi_clean(u):
-    """Czyści dane, zapewnia UID i sortuje chronologicznie."""
-    df = fetch_worksheet(f"targi_{u.upper()}")
+    """Czyści dane, mapuje Kaczmarka na Alicję w UI i sortuje chronologicznie."""
+    # MAPOWANIE: Jeśli operator to ALICJA, pobierz zakładkę KACZMAREK
+    sheet_name = "targi_KACZMAREK" if u == "ALICJA" else f"targi_{u.upper()}"
+    df = fetch_worksheet(sheet_name)
+    
     if not df.empty:
         df = df.dropna(subset=["Nazwa Targów"]).reset_index(drop=True)
+        
+        # ZAMIANA W LOCIE (żeby w aplikacji wszystko wyświetlało się jako ALICJA)
+        if "Logistyk" in df.columns:
+            df["Logistyk"] = df["Logistyk"].replace("KACZMAREK", "ALICJA")
+            
         df["Pierwszy wyjazd"] = pd.to_datetime(df["Pierwszy wyjazd"], errors='coerce')
         df["Data końca"] = pd.to_datetime(df["Data końca"], errors='coerce')
         df = df.sort_values(by="Pierwszy wyjazd", ascending=True).reset_index(drop=True)
@@ -188,8 +72,20 @@ def load_targi_clean(u):
             df["UID"] = df["UID"].astype(str)
     return df
 
+def update_targi_sheet(u, df_to_save):
+    """Zapisuje dane do arkusza Google, przywracając nazwę KACZMAREK do bazy (niewidoczne dla UI)"""
+    sheet_name = "targi_KACZMAREK" if u == "ALICJA" else f"targi_{u.upper()}"
+    df_copy = df_to_save.copy()
+    
+    # PRZYWRÓCENIE ORYGINALNEJ NAZWY W BAZIE DANYCH
+    if "Logistyk" in df_copy.columns:
+        df_copy["Logistyk"] = df_copy["Logistyk"].replace("ALICJA", "KACZMAREK")
+        
+    conn.update(worksheet=sheet_name, data=df_copy)
+
+# Pobieranie danych dla obu logistyków
 df_dukiel = load_targi_clean("DUKIEL")
-df_kaczmarek = load_targi_clean("KACZMAREK")
+df_alicja = load_targi_clean("ALICJA")
 
 # --- 5. NAWIGACJA GŁÓWNA ---
 st.sidebar.markdown("<br>", unsafe_allow_html=True)
@@ -231,7 +127,7 @@ if menu == "🏠 DZIENNIK":
                 }])
                 
                 updated_df = pd.concat([current_my, new_row], ignore_index=True)
-                conn.update(worksheet=f"targi_{user}", data=updated_df)
+                update_targi_sheet(user, updated_df)
                 
                 st.cache_data.clear()
                 st.success(f"DODANO DO SYSTEMU. PRZYDZIELONO KOD: {new_uid}")
@@ -239,7 +135,7 @@ if menu == "🏠 DZIENNIK":
                 st.rerun()
 
     st.subheader("✍️ Zarządzanie Flotą (Chronologicznie)")
-    my_df = df_dukiel if user == "DUKIEL" else df_kaczmarek
+    my_df = df_dukiel if user == "DUKIEL" else df_alicja
     
     if not my_df.empty:
         edited_df = st.data_editor(
@@ -250,7 +146,7 @@ if menu == "🏠 DZIENNIK":
             key=f"stable_editor_{user}",
             column_config={
                 "Status": st.column_config.SelectboxColumn("Status", options=["OCZEKUJE", "W TRAKCIE", "WRÓCIŁO", "ANULOWANE"]),
-                "Logistyk": st.column_config.SelectboxColumn("Logistyk", options=["DUKIEL", "KACZMAREK"]),
+                "Logistyk": st.column_config.SelectboxColumn("Logistyk", options=["DUKIEL", "ALICJA"]),
                 "Sloty": st.column_config.SelectboxColumn("Sloty", options=["TAK", "NIE", "NIE POTRZEBA"]),
                 "Grupa WhatsApp": st.column_config.SelectboxColumn("Grupa WhatsApp", options=["TAK", "NIE", "NIE POTRZEBA"]),
                 "Parkingi": st.column_config.SelectboxColumn("Parkingi", options=["TAK", "NIE", "NIE POTRZEBA"]),
@@ -269,7 +165,7 @@ if menu == "🏠 DZIENNIK":
             edited_df["Pierwszy wyjazd"] = pd.to_datetime(edited_df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d')
             edited_df["Data końca"] = pd.to_datetime(edited_df["Data końca"]).dt.strftime('%Y-%m-%d')
             
-            partner_name = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
+            partner_name = "ALICJA" if user == "DUKIEL" else "DUKIEL"
             
             stay_here = edited_df[edited_df["Logistyk"] == user]
             move_to_partner = edited_df[edited_df["Logistyk"] == partner_name]
@@ -280,10 +176,10 @@ if menu == "🏠 DZIENNIK":
                 partner_df_latest["Data końca"] = partner_df_latest["Data końca"].dt.strftime('%Y-%m-%d')
                 
                 final_partner_df = pd.concat([partner_df_latest, move_to_partner], ignore_index=True)
-                conn.update(worksheet=f"targi_{partner_name}", data=final_partner_df)
+                update_targi_sheet(partner_name, final_partner_df)
                 st.info(f"PRZENIESIONO {len(move_to_partner)} PROJEKT(ÓW) DO: {partner_name}")
 
-            conn.update(worksheet=f"targi_{user}", data=stay_here)
+            update_targi_sheet(user, stay_here)
             
             st.cache_data.clear()
             st.success("SYNCHRONIZACJA ZAKOŃCZONA.")
@@ -293,20 +189,19 @@ if menu == "🏠 DZIENNIK":
         st.info("Brak aktywnych projektów w Twoim dzienniku pokładowym.")
 
     st.markdown("---")
-    partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
+    partner = "ALICJA" if user == "DUKIEL" else "DUKIEL"
     st.subheader(f"👁️ Radar Operacyjny Partnera: {partner}")
-    df_partner_view = df_kaczmarek if user == "DUKIEL" else df_dukiel
+    df_partner_view = df_alicja if user == "DUKIEL" else df_dukiel
     st.dataframe(df_partner_view, use_container_width=True, hide_index=True)
 
 # --- MODUŁ 2: KALENDARZ WYJAZDÓW ---
 elif menu == "📅 KALENDARZ":
     st.title("📅 Grafik Transportowy (Flight Schedule)")
-    df_all = pd.concat([df_dukiel, df_kaczmarek], ignore_index=True)
+    df_all = pd.concat([df_dukiel, df_alicja], ignore_index=True)
     df_viz = df_all.dropna(subset=["Pierwszy wyjazd", "Data końca"])
     
     events = []
     for _, r in df_viz.iterrows():
-        # Kolory Lufthansy w kalendarzu (Granat dla Dukiela, Złoto dla Kaczmarka)
         color = "#05164D" if r["Logistyk"] == "DUKIEL" else "#FFB900"
         events.append({
             "title": f"[{r['Logistyk']}] {r['Nazwa Targów']}",
@@ -314,14 +209,14 @@ elif menu == "📅 KALENDARZ":
             "end": (r["Data końca"] + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
             "backgroundColor": color,
             "borderColor": color,
-            "textColor": "#FFFFFF" if color == "#05164D" else "#05164D" # Zapewnienie czytelności
+            "textColor": "#FFFFFF" if color == "#05164D" else "#05164D" 
         })
     calendar(events=events, options={"locale": "pl", "initialView": "dayGridMonth"}, key="cal_sqm_v10")
 
 # --- MODUŁ 3: WYKRES GANTA ---
 elif menu == "📊 WYKRES GANTA":
     st.title("📊 Timeline Projektów (Flight Path)")
-    df_all = pd.concat([df_dukiel, df_kaczmarek], ignore_index=True)
+    df_all = pd.concat([df_dukiel, df_alicja], ignore_index=True)
     df_viz = df_all.dropna(subset=["Pierwszy wyjazd", "Data końca"])
     
     if not df_viz.empty:
@@ -331,11 +226,10 @@ elif menu == "📊 WYKRES GANTA":
             x_end="Data końca", 
             y="Nazwa Targów", 
             color="Logistyk", 
-            color_discrete_map={"DUKIEL": "#05164D", "KACZMAREK": "#FFB900"}
+            color_discrete_map={"DUKIEL": "#05164D", "ALICJA": "#FFB900"}
         )
         fig.update_yaxes(autorange="reversed")
         
-        # Oczyszczenie wykresu Ganta - styl premium
         fig.update_layout(
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
