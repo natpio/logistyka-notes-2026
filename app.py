@@ -25,7 +25,7 @@ except FileNotFoundError:
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- 3. LOGIKA OPERATORA I DOSTĘPU ---
-st.sidebar.markdown("<h2 style='text-align: center; letter-spacing: 2px;'>✈️ SQM OPERATION CENTER</h2>", unsafe_allow_html=True)
+st.sidebar.markdown("<h2 style='text-align: center; letter-spacing: 2px;'>✈️ SQM STATUSY EVENTÓW</h2>", unsafe_allow_html=True)
 st.sidebar.markdown("<br>", unsafe_allow_html=True) # Odstęp
 
 # ZMIANA: Dowódca zmiany -> Operator
