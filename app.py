@@ -29,17 +29,22 @@ st.markdown("""
         border-right: 4px solid #FFB900; /* Lufthansa Gold/Yellow */
         box-shadow: 4px 0 20px rgba(0,0,0,0.15);
     }
-    [data-testid="stSidebar"] * {
+    
+    /* Teksty w panelu bocznym - jasne, ALE bez psucia inputów */
+    [data-testid="stSidebar"] p, 
+    [data-testid="stSidebar"] label,
+    [data-testid="stSidebar"] span,
+    [data-testid="stSidebar"] .stMarkdown {
         color: #FFFFFF !important; 
         font-family: 'Inter', sans-serif;
         font-weight: 400;
     }
-    
+
     /* WIDŻETY I KONTENERY (KARTY POKŁADOWE) */
     div[data-testid="stMetric"], .element-container {
         background-color: #FFFFFF; 
         border-radius: 8px;
-        box-shadow: 0px 8px 24px rgba(5, 22, 77, 0.05); /* Luksusowy, miękki cień */
+        box-shadow: 0px 8px 24px rgba(5, 22, 77, 0.05); 
         padding: 12px;
         border-top: 5px solid #05164D;
         transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -80,7 +85,7 @@ st.markdown("""
         transform: translateY(-2px);
     }
 
-    /* NAGŁÓWKI Z PASKA LUFTHANSY */
+    /* NAGŁÓWKI (GŁÓWNY WIDOK) */
     h1, h2, h3 {
         font-family: 'Montserrat', sans-serif !important;
         color: #05164D !important;
@@ -98,18 +103,45 @@ st.markdown("""
         margin-top: 8px;
         border-radius: 2px;
     }
+
+    /* NAPRAWA NAGŁÓWKÓW W PANELU BOCZNYM (żeby nie znikały na ciemnym tle) */
+    [data-testid="stSidebar"] h1, 
+    [data-testid="stSidebar"] h2, 
+    [data-testid="stSidebar"] h3 {
+        color: #FFB900 !important; 
+    }
+    [data-testid="stSidebar"] h1::after, 
+    [data-testid="stSidebar"] h2::after {
+        display: none !important; 
+    }
     
-    /* INPUTY I POLA TEKSTOWE */
+    /* INPUTY I POLA TEKSTOWE (Czytelny granatowy tekst na białym tle) */
+    div[data-baseweb="select"] *, 
+    input[type="text"], 
+    input[type="password"],
+    input {
+        color: #05164D !important;
+        font-weight: 600;
+    }
+    
     .stTextInput>div>div>input, .stSelectbox>div>div>div {
         border-radius: 6px;
         border: 1px solid #CBD5E1;
         background-color: #F8FAFC;
-        color: #05164D;
-        font-weight: 500;
     }
     .stTextInput>div>div>input:focus, .stSelectbox>div>div>div:focus {
         border-color: #FFB900;
         box-shadow: 0 0 0 2px rgba(255, 185, 0, 0.2);
+    }
+    
+    /* KOMUNIKATY INFO/WARNING */
+    [data-testid="stAlert"] {
+        background-color: #FFFFFF !important;
+        border-left: 5px solid #FFB900 !important;
+        color: #05164D !important;
+    }
+    [data-testid="stAlert"] * {
+        color: #05164D !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -118,7 +150,7 @@ st.markdown("""
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- 3. LOGIKA OPERATORA I DOSTĘPU ---
-st.sidebar.markdown("<h2 style='text-align: center; color: #FFB900; letter-spacing: 2px;'>✈️ SQM OPERATION CENTER</h2>", unsafe_allow_html=True)
+st.sidebar.markdown("<h2 style='text-align: center; letter-spacing: 2px;'>✈️ SQM OPERATION CENTER</h2>", unsafe_allow_html=True)
 st.sidebar.markdown("<br>", unsafe_allow_html=True) # Odstęp
 
 user = st.sidebar.selectbox("👨‍✈️ DOWÓDCA ZMIANY:", ["Wybierz...", "DUKIEL", "KACZMAREK"])
@@ -232,109 +264,4 @@ if menu == "🏠 DZIENNIK":
         if st.button("💾 ZAPISZ I SYNCHRONIZUJ DANE SYSTEMOWE"):
             if 'UID' in edited_df.columns:
                 edited_df['UID'] = edited_df['UID'].apply(
-                    lambda x: str(uuid.uuid4())[:8].upper() if (pd.isna(x) or str(x).strip() == "" or str(x) == "None") else x
-                )
-            
-            edited_df["Pierwszy wyjazd"] = pd.to_datetime(edited_df["Pierwszy wyjazd"]).dt.strftime('%Y-%m-%d')
-            edited_df["Data końca"] = pd.to_datetime(edited_df["Data końca"]).dt.strftime('%Y-%m-%d')
-            
-            partner_name = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
-            
-            stay_here = edited_df[edited_df["Logistyk"] == user]
-            move_to_partner = edited_df[edited_df["Logistyk"] == partner_name]
-            
-            if not move_to_partner.empty:
-                partner_df_latest = load_targi_clean(partner_name)
-                partner_df_latest["Pierwszy wyjazd"] = partner_df_latest["Pierwszy wyjazd"].dt.strftime('%Y-%m-%d')
-                partner_df_latest["Data końca"] = partner_df_latest["Data końca"].dt.strftime('%Y-%m-%d')
-                
-                final_partner_df = pd.concat([partner_df_latest, move_to_partner], ignore_index=True)
-                conn.update(worksheet=f"targi_{partner_name}", data=final_partner_df)
-                st.info(f"PRZENIESIONO {len(move_to_partner)} PROJEKT(ÓW) DO: {partner_name}")
-
-            conn.update(worksheet=f"targi_{user}", data=stay_here)
-            
-            st.cache_data.clear()
-            st.success("SYNCHRONIZACJA ZAKOŃCZONA.")
-            time.sleep(1)
-            st.rerun()
-    else:
-        st.info("Brak aktywnych projektów w Twoim dzienniku pokładowym.")
-
-    st.markdown("---")
-    partner = "KACZMAREK" if user == "DUKIEL" else "DUKIEL"
-    st.subheader(f"👁️ Radar Operacyjny Partnera: {partner}")
-    df_partner_view = df_kaczmarek if user == "DUKIEL" else df_dukiel
-    st.dataframe(df_partner_view, use_container_width=True, hide_index=True)
-
-# --- MODUŁ 2: KALENDARZ WYJAZDÓW ---
-elif menu == "📅 KALENDARZ":
-    st.title("📅 Grafik Transportowy (Flight Schedule)")
-    df_all = pd.concat([df_dukiel, df_kaczmarek], ignore_index=True)
-    df_viz = df_all.dropna(subset=["Pierwszy wyjazd", "Data końca"])
-    
-    events = []
-    for _, r in df_viz.iterrows():
-        # Kolory Lufthansy w kalendarzu (Granat dla Dukiela, Złoto dla Kaczmarka)
-        color = "#05164D" if r["Logistyk"] == "DUKIEL" else "#FFB900"
-        events.append({
-            "title": f"[{r['Logistyk']}] {r['Nazwa Targów']}",
-            "start": r["Pierwszy wyjazd"].strftime("%Y-%m-%d"),
-            "end": (r["Data końca"] + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
-            "backgroundColor": color,
-            "borderColor": color,
-            "textColor": "#FFFFFF" if color == "#05164D" else "#05164D" # Zapewnienie czytelności
-        })
-    calendar(events=events, options={"locale": "pl", "initialView": "dayGridMonth"}, key="cal_sqm_v10")
-
-# --- MODUŁ 3: WYKRES GANTA ---
-elif menu == "📊 WYKRES GANTA":
-    st.title("📊 Timeline Projektów (Flight Path)")
-    df_all = pd.concat([df_dukiel, df_kaczmarek], ignore_index=True)
-    df_viz = df_all.dropna(subset=["Pierwszy wyjazd", "Data końca"])
-    
-    if not df_viz.empty:
-        fig = px.timeline(
-            df_viz, 
-            x_start="Pierwszy wyjazd", 
-            x_end="Data końca", 
-            y="Nazwa Targów", 
-            color="Logistyk", 
-            color_discrete_map={"DUKIEL": "#05164D", "KACZMAREK": "#FFB900"}
-        )
-        fig.update_yaxes(autorange="reversed")
-        
-        # Oczyszczenie wykresu Ganta - styl premium
-        fig.update_layout(
-            plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(family="Inter", color="#05164D"),
-            xaxis=dict(showgrid=True, gridcolor="#E2E8F0"),
-            yaxis=dict(showgrid=False)
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Brak danych na radarze.")
-
-# --- MODUŁ 4: TABLICA ROZKAZÓW ---
-elif menu == "📋 TABLICA ROZKAZÓW":
-    st.title("📋 Komunikaty i Zadania (Flight Deck)")
-    t1, t2 = st.tabs(["📢 OGŁOSZENIA METEO / BAZA", "✅ ZADANIA DO WYKONANIA"])
-    
-    with t1:
-        df_o = fetch_worksheet("ogloszenia")
-        ed_o = st.data_editor(df_o, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_o_v10")
-        if st.button("💾 ZATWIERDŹ KOMUNIKATY"):
-            conn.update(worksheet="ogloszenia", data=ed_o)
-            st.cache_data.clear()
-            st.success("Komunikaty zaktualizowane na tablicy odlotów.")
-            st.rerun()
-            
-    with t2:
-        df_z = fetch_worksheet("zadania")
-        ed_z = st.data_editor(df_z, use_container_width=True, hide_index=True, num_rows="dynamic", key="ed_z_v10")
-        if st.button("💾 ZATWIERDŹ ZADANIA"):
-            conn.update(worksheet="zadania", data=ed_z)
-            st.cache_data.clear()
-            st.success("Log operacyjny zapisany.")
-            st.rerun()
+                    lambda x: str(uuid.uuid4())[:8].upper() if (pd.isna(x) or str(x).strip() == "" or str(x)
