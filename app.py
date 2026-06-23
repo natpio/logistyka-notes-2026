@@ -28,8 +28,9 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 st.sidebar.markdown("<h2 style='text-align: center; letter-spacing: 2px;'>✈️ SQM OPERATION CENTER</h2>", unsafe_allow_html=True)
 st.sidebar.markdown("<br>", unsafe_allow_html=True) # Odstęp
 
-user = st.sidebar.selectbox("👨‍✈️ DOWÓDCA ZMIANY:", ["Wybierz...", "DUKIEL", "ALICJA"])
-user_pins = {"DUKIEL": "9607", "ALICJA": "1225"} # Zostawiłem PIN 1225 dla Alicji. Możesz go tu zmienić.
+# ZMIANA: Dowódca zmiany -> Operator
+user = st.sidebar.selectbox("👨‍✈️ OPERATOR:", ["Wybierz...", "DUKIEL", "ALICJA"])
+user_pins = {"DUKIEL": "9607", "ALICJA": "1225"} 
 
 if user == "Wybierz...":
     st.warning("🛫 AUTORYZACJA WYMAGANA W PANELU BOCZNYM...")
@@ -134,7 +135,8 @@ if menu == "🏠 DZIENNIK":
                 time.sleep(1)
                 st.rerun()
 
-    st.subheader("✍️ Zarządzanie Flotą (Chronologicznie)")
+    # ZMIANA: Zarządzanie Flotą (Chronologicznie) -> Aktualne eventy
+    st.subheader("✍️ Aktualne eventy")
     my_df = df_dukiel if user == "DUKIEL" else df_alicja
     
     if not my_df.empty:
